@@ -1,8 +1,13 @@
 ; *****************************************************************************
-; Recoil Gun Grenade code for SkyRocket Toys 2016
+; Recoil Gun Grenade code for SkyRocket Toys 2017
 ; Based on TR4K-IDE Demo Code by TRITAN Technology Inc.
 ;
 ; Note that the TR4K-IDE uses 8 character tabs.
+; TR4P153BT
+;     14 pins (11 input/output, 1 input, vcc, gnd)
+;     2048 instructions
+;     256 nybbles of RAM
+;     2.2V to 5.5V
 ; *****************************************************************************
 ; 
 ; Resource usage
@@ -10,12 +15,24 @@
 ;   Internal high speed oscillator is 32MHz +/- 2%
 ;   CPU clock is osc/4 = 8MHz
 ;   Scaler2 = MCLK/8 = 1MHz
-;   PA0 = Output to visible LED (high = LED on)
-;   PA1 = 38kHz infrared output (high = LED on)
-; 
 ;   Timer1 = Unused
 ;   Timer2 = 80uS for protocol output
 ;   RTC = Unused
+; 
+; GPIO usage
+;   PA0 = IR power 1 (output)
+;   PA1 = 38kHz infrared (output) (high = LED on)
+;   PA2 = unused
+;   PA3 = unused
+;   PB0 = Visible LED1 (output)
+;   PB1 = Visible LED2 (output)
+;   PB2 = Visible LED3 (output)
+;   PB3 = IR power 2 (output)
+;   PD0 = Power (output)
+;   PD1 = User (input)
+;   PD2 = unused
+;   PD3 = IR power 3
+; 
 ; *****************************************************************************
 ; Timings
 ;   Vishay have said that the TSOP4438 requires 35ms to cool down between packets
