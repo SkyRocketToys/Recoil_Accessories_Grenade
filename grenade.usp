@@ -1,0 +1,5 @@
+[_TR4K]
+TR4K-IDE Project Define:
+IM=grenade.asm
+INCLUDE=grenade.inc
+GROUP=151
