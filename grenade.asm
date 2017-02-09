@@ -3,8 +3,13 @@
 ; Based on TR4K-IDE Demo Code by TRITAN Technology Inc.
 ;
 ; Note that the TR4K-IDE uses 8 character tabs.
-; TR4P153BT
+; TR4P153BT = new hardware (grenade)
 ;     14 pins (11 input/output, 1 input, vcc, gnd)
+;     2048 instructions
+;     256 nybbles of RAM
+;     2.2V to 5.5V
+; TR4P151AF = old hardware (beacon)
+;     6 pins (11 input/output, 1 input, vcc, gnd)
 ;     2048 instructions
 ;     256 nybbles of RAM
 ;     2.2V to 5.5V
@@ -58,7 +63,8 @@
 ; -----------------------------------------------------------------------------
 ; Include Block
 ; -----------------------------------------------------------------------------
-#include "grenade.inc"
+;#include "tr4p153bt.inc" // Grenade
+#include "tr4p151af.inc" // Beacon
 
 ; -----------------------------------------------------------------------------
 ; Primary choice: Choose the protocol to transmit
