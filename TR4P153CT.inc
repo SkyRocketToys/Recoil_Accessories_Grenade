@@ -15,7 +15,7 @@
 ;                   Register 1B
 ;****************************************************************************
 
-#define SUPPORT_PORTD 1
+;#define SUPPORT_PORTD 1
 ;#define SUPPORT_RDETECT 0
 
 ;----------------------

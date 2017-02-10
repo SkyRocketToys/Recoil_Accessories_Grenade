@@ -3,27 +3,30 @@
 ; Based on TR4K-IDE Demo Code by TRITAN Technology Inc.
 ;
 ; Note that the TR4K-IDE uses 8 character tabs.
+; TR4P153CT = new hardware (emulator, otp chips)
+;     as TR4P153BT but supports ADC
 ; TR4P153BT = new hardware (grenade)
 ;     14 pins (11 input/output, 1 input, vcc, gnd)
 ;     2048 instructions
 ;     256 nybbles of RAM
 ;     2.2V to 5.5V
-;
+; 
 ; PINOUT (*=common to both chips)
-; 1 PD1 user       14 PD2 (unused)
-; 2 PD0 power      13 PD3 IR_PWR_3
-; 3 PB2 led3       12 PB3  IR_PWR_2
-; 4 VDD*           11 VSS*
-; 5 PB1* led2      10 PA0* IR_PWR_1
-; 6 PB0* led1       9 PA1* IR_DRV
-; 7 PA3* (unused)   8 PA2* (unused)
-;
+; This involved switching PA3 and PB2 from the schematic 27jan2017 since PA3 is input only
+; 1 PD1  PWR_EN        14 PD2  EN_LED4
+; 2 PD0  PWR_BTN (low) 13 PD3  EN_LED3
+; 3 PB2  LVL_1         12 PB3  EN_LED2
+; 4 VDD*               11 VSS*
+; 5 PB1* LVL_3         10 PA0* EN_LED1
+; 6 PB0* LVL_2          9 PA1* MOD_OUT
+; 7 PA3* (input only)   8 PA2* LED (visible) (active low)
+; 
 ; TR4P151AF = old hardware (beacon)
 ;     6 pins (11 input/output, 1 input, vcc, gnd)
 ;     2048 instructions
 ;     256 nybbles of RAM
 ;     2.2V to 5.5V
-;
+; 
 ; PINOUT
 ; 1 VDD    8 VSS
 ; 2 PB1    7 PA0
@@ -79,9 +82,11 @@
 ; -----------------------------------------------------------------------------
 ; Include Block
 ; -----------------------------------------------------------------------------
-#include "tr4p153ct.inc" // Emulator (same as grenade)
-;#include "tr4p153bt.inc" // Grenade (same as emulator)
-;#include "tr4p151af.inc" // Beacon (lacks portD)
+#define USE_FIXED_SERIAL 1
+#define SUPPORT_PORTD 1 ; defined here since it does not seem to work when it is defined within an include file
+#include "tr4p153ct.inc" ; Emulator (same as grenade)
+;#include "tr4p153bt.inc" ;Grenade (same as emulator)
+;#include "tr4p151af.inc" ; Beacon (lacks portD)
 
 ; -----------------------------------------------------------------------------
 ; Primary choice: Choose the protocol to transmit
@@ -133,6 +138,20 @@
 ;#define PROTOCOL_9
 #endif
 ; -----------------------------------------------------------------------------
+
+; grenade logic equates
+state_unarmed	equ 0
+state_explode	equ 1
+state_1	equ 2
+state_2	equ 3
+state_3	equ 4
+state_4	equ 5
+state_5	equ 6
+state_6	equ 7
+state_7	equ 8
+state_8	equ 9
+state_9	equ 10
+state_10	equ 12
 
 ; -----------------------------------------------------------------------------
 ; User defined "registers" (SRAM variables)
@@ -201,6 +220,21 @@ CRC_DATA0      ; Calculated 16 bit CRC input buffer
 CRC_DATA1      ; ^
 CRC_DATA2      ; ^
 CRC_DATA3      ; ^
+
+; Grenade logic variables
+g_timer0
+g_timer1
+g_timer2
+g_timer3
+
+g_timer_last0
+g_timer_last1
+g_timer_last2
+g_timer_last3
+
+g_state
+g_substate
+
 
 }
 
@@ -754,14 +788,12 @@ SYS_Check_Prc:
 	ldmah	#0
 
 	; Set ports for input/output
-	; Pin A1 = output (Infrared LED)
-	; Pin A0, A2, A3, B0, B1 = input
-	ld	a,#0011b	; Visible LED + Infrared LED
-	ld	(IOC_PA),a
-	ld	a,#1111b	; PortB is output
-	ld	(IOC_PB),a
+	ld	a,#0111b
+	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
+	ld	a,#1111b
+	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
 #ifdef SUPPORT_PORTD
-	ld	a,#1001b
+	ld	a,#1110b
 	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
 #endif
 
@@ -897,13 +929,13 @@ Chk_Halt_Tim_Prc:
 	ld	(Tim_SleepCount3),a
 
 	; Turn off the visible LED and infrared LED
-	clr	#2,(RTC) ; PA1 no output infrared beam
-	ld	a,#0000b
+	clr	#2,(RTC)        ; PA1 no output infrared beam
+	ld	a,#1000b
 	ld	(data_pa),a	; Port A0,1,2,3=low
-	ld	a,#0111b
+	ld	a,#0000b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
 #ifdef SUPPORT_PORTD
-	ld	a,#1001b
+	ld	a,#0011b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 #endif
 
@@ -1093,6 +1125,13 @@ Data_Int_Code:
 ; Retrieve the 16 bit unique ID (serial number) from the OTP memory
 ; Output: Mcu_ID is valid
 Read_Mcu_ID:
+#ifdef USE_FIXED_SERIAL
+	ld	a,#05H
+	ld	(Mcu_ID0),A
+	ld	(Mcu_ID1),A
+	ld	(Mcu_ID2),A
+	ld	(Mcu_ID3),A
+#else
 	; Setup pointer to program OTP
 	ld	a,#05H
 	ld	(Dma2),a
@@ -1129,55 +1168,56 @@ Read_Mcu_ID:
 	 
 	nop
 	nop
+#endif
 	rets 
 
 ; -----------------------------------------------------------------------------
 ; IO port initialization settings (e.g. pullup/pulldown/wakeup)
 PODY_IO_Init:
-	; Pin A0* IR_PWR_1 (pulled high) = output high
-	; Pin A1* IR_DRV = output low
-	; Pin A2* (unused) = input (pull down) no wakeup
-	; Pin A3* (unused) = input (pull down) no wakeup
-	ld	a,#0011b	; Port A0,A1 = output
-	ld	(IOC_PA),a	; Port A1 direction
-	ld	a,#0001b
-	ld	(data_pa),a	; Port A0=high, A1,2,3=low
+	; Pin A0* EN_LED1 (active high) = output high for firing
+	; Pin A1* MOD_OUT (active high) = output low but PWM high on firing
+	; Pin A2* LED     (active low)  = output low
+	; Pin A3*         (unused)      = input pull high
+	ld	a,#0111b
+	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
+	ld	a,#1001b
+	ld	(data_pa),a	; Port A data (0=low/1=high)
 	ld	a,#0000b
 	ld	exio(pawk),a	; Port A wakeup - none
+	ld	a,#1000b
+	ld	exio(papu),a	; Port A pull up 100kOhm resistor
 	ld	a,#0000b
-	ld	exio(papu),a	; Port A pull up 100kOhm resistor - none
-	ld	a,#1110b
-	ld	exio(papl),a	; Port A pull down 100kOhm resistor - A1,A2,A3
+	ld	exio(papl),a	; Port A pull down 100kOhm resistor
 	
-	; Pin B0* led1 (active low) = output low
-	; Pin B1* led2 (active low) = output high
-	; Pin B2  led3 (active low) = output low
-	; Pin B3  IR_PWR_2 (pulled high) = output high
+	; Pin B0* LVL_2   (active high) = output low
+	; Pin B1* LVL_3   (active high) = output high
+	; Pin B2  LVL_1   (active high) = output low
+	; Pin B3  EN_LED2 (active high) = output low
 	ld	a,#1111b
 	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
-	ld	a,#1010b
+	ld	a,#0010b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
 	ld	a,#0000b
 	ld	exio(pbwk),a	; Port B wakeup
-	ld	a,#1010b
+	ld	a,#0000b
 	ld	exio(pbpu),a	; Port B pull up 100kOhm resistor 
-	ld	a,#0101b
-	ld	exio(pbpl),a	; Port B pull down 100kOhm resistor - none
+	ld	a,#0000b
+	ld	exio(pbpl),a	; Port B pull down 100kOhm resistor
 
-	; Pin D0 power = output high
-	; Pin D1 user = input (pull down) wakeup
-	; Pin D2 (unused) = input (pull down) no wakeup
-	; Pin D3 IR_PWR_3 (pulled high) = output high
+	; Pin D0  PWD_BTN (active low)  = input (pull up) wakeup
+	; Pin D1  PWR_EN  (active high) = output high
+	; Pin D2  EN_LED4 (active high) = output low
+	; Pin D3  EN_LED3 (active high) = output low
 #ifdef SUPPORT_PORTD
-	ld	a,#1001b
+	ld	a,#1110b
 	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
-	ld	a,#1001b
+	ld	a,#0011b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
-	ld	a,#0010b
+	ld	a,#0001b
 	ld	exio(pdwk),a	; Port D wakeup
-	ld	a,#1001b
+	ld	a,#0001b
 	ld	exio(pdpu),a	; Port D pull up 100kOhm resistor 
-	ld	a,#0110b
+	ld	a,#0000b
 	ld	exio(pdpl),a	; Port B pull down 100kOhm resistor - none
 #endif
 	rets
@@ -1255,3 +1295,131 @@ Timr2_Init_End:
 	rets
 
 ; *****************************************************************************
+
+; ----------------------------------------------------------------------------
+Grenade_init_logic:
+	ld a,#0
+	ld (g_timer0),a
+	ld (g_timer1),a
+	ld (g_timer2),a
+	ld (g_timer3),a
+	ld (g_substate),a
+	ld (g_state),a
+	rets
+
+; ----------------------------------------------------------------------------
+Grenade_arm:
+	ld a,#state_10
+	ld (g_state),A
+	ld a,#state_10
+	ld (g_state),a
+	ld a,#0
+	ld (g_timer0),a
+	ld (g_timer1),a
+	ld (g_timer2),a
+	ld (g_timer3),a
+	ld (g_substate),a
+	rets
+
+; ----------------------------------------------------------------------------
+; Code to update the grenade visible LED (PA2)
+Grenade_update_visible:
+	ld a,(g_state)
+	cmp a,#state_unarmed
+	jz gvis_off
+	cmp a,#state_explode
+	jnz gvis_notexp
+	; Explosion
+	ld a,(g_substate)
+	and a,#1
+	jz gvis_off
+	jmp gvis_on
+
+gvis_notexp:
+	; Countdown
+	ld a,(g_substate)
+	cmp a,#0
+	jz gvis_off
+
+gvis_on:
+	clr #2,(DATA_PA)
+	rets
+
+gvis_off:
+	set #2,(DATA_PA)
+	rets
+
+
+; ----------------------------------------------------------------------------
+Grenade_update_logic:
+	ld a,(g_state)
+	cmp a,#state_unarmed
+	jnz gul_notunarmed
+	ld a,(DATA_PD)
+	and a,#1 ; PD0 = user button
+	jz Grenade_Arm
+	rets
+
+gul_notunarmed:
+	rets
+
+#if 0
+	; Increment g_timer according to timer
+	uint16_t nTimeLimit = 1428; // 100ms
+		if (grenade.state == state_explode)
+		{
+			nTimeLimit = 1000; // 70ms
+		}
+		if (grenade.timer >= nTimeLimit)
+		{
+			grenade.timer -= nTimeLimit;
+			grenade.substate++;
+
+
+			uint16_t serial;
+			switch (grenade.state) {
+			case state_explode:
+				// 10 times per second send the explosion event
+				serial = 0xCB00U;
+				IRsend_queue_beacon(serial);
+				if (grenade.substate == 1)
+				{
+					UART2_Print("# Grenade exploded\r\n");
+				}
+				if (grenade.substate >= 20) // 1400ms explosion
+				{
+					grenade.state = state_unarmed;
+					grenade.substate = 0;
+					SleepPart1();
+				}
+				break;
+			case state_1:
+			case state_2:
+			case state_3:
+			case state_4:
+			case state_5:
+			case state_6:
+			case state_7:
+			case state_8:
+			case state_9:
+			case state_10:
+				if ((grenade.substate & 1) != 0) // 5 times per second
+				{
+					serial = 0xCB01U + grenade.state-state_1;
+					IRsend_queue_beacon(serial);
+				}
+				if (grenade.substate >= 10) // 1000ms in each tick
+				{
+					UART2_Print("# Grenade tick\r\n");
+					grenade.state--;
+					grenade.substate = 0;
+				}
+				break;
+			case state_unarmed:
+			default:
+				break;
+			}
+		}
+	}
+
+#endif
