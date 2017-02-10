@@ -8,11 +8,27 @@
 ;     2048 instructions
 ;     256 nybbles of RAM
 ;     2.2V to 5.5V
+;
+; PINOUT (*=common to both chips)
+; 1 PD1 user       14 PD2 (unused)
+; 2 PD0 power      13 PD3 IR_PWR_3
+; 3 PB2 led3       12 PB3  IR_PWR_2
+; 4 VDD*           11 VSS*
+; 5 PB1* led2      10 PA0* IR_PWR_1
+; 6 PB0* led1       9 PA1* IR_DRV
+; 7 PA3* (unused)   8 PA2* (unused)
+;
 ; TR4P151AF = old hardware (beacon)
 ;     6 pins (11 input/output, 1 input, vcc, gnd)
 ;     2048 instructions
 ;     256 nybbles of RAM
 ;     2.2V to 5.5V
+;
+; PINOUT
+; 1 VDD    8 VSS
+; 2 PB1    7 PA0
+; 3 PB0    6 PA1
+; 4 PA3    5 PA2
 ; *****************************************************************************
 ; 
 ; Resource usage
@@ -63,8 +79,9 @@
 ; -----------------------------------------------------------------------------
 ; Include Block
 ; -----------------------------------------------------------------------------
-;#include "tr4p153bt.inc" // Grenade
-#include "tr4p151af.inc" // Beacon
+#include "tr4p153ct.inc" // Emulator (same as grenade)
+;#include "tr4p153bt.inc" // Grenade (same as emulator)
+;#include "tr4p151af.inc" // Beacon (lacks portD)
 
 ; -----------------------------------------------------------------------------
 ; Primary choice: Choose the protocol to transmit
@@ -284,17 +301,12 @@ GroupNumTotal	equ GroupNumSlow+GroupNumFast
 	org	0
 	ldpch	PGMSRT
 	jmp	PGMSRT
-	
-	; (2) Reserved
 	nop
 	nop
 	
 	; (4) Entry point for wakeup
 	ldpch	WakeUp
 	jmp	WakeUp
-	
-	org 0008h ; CPM not sure this should be here
-	; (6) Reserved
 	nop
 	nop
 
@@ -746,8 +758,12 @@ SYS_Check_Prc:
 	; Pin A0, A2, A3, B0, B1 = input
 	ld	a,#0011b	; Visible LED + Infrared LED
 	ld	(IOC_PA),a
-	ld	a,#0000b	; No pins used on portB
+	ld	a,#1111b	; PortB is output
 	ld	(IOC_PB),a
+#ifdef SUPPORT_PORTD
+	ld	a,#1001b
+	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
+#endif
 
 	; Kick the watchdog
 	ld	a,#05h
@@ -884,6 +900,12 @@ Chk_Halt_Tim_Prc:
 	clr	#2,(RTC) ; PA1 no output infrared beam
 	ld	a,#0000b
 	ld	(data_pa),a	; Port A0,1,2,3=low
+	ld	a,#0111b
+	ld	(data_pb),a	; Port B data (0=low/1=high)
+#ifdef SUPPORT_PORTD
+	ld	a,#1001b
+	ld	(data_pd),a	; Port D data (0=low/1=high)
+#endif
 
 	clr	#1,(SYS0) ; Clear ENINT and disable interrupts
 	nop
@@ -1112,9 +1134,10 @@ Read_Mcu_ID:
 ; -----------------------------------------------------------------------------
 ; IO port initialization settings (e.g. pullup/pulldown/wakeup)
 PODY_IO_Init:
-	; Pin A0 = output high.
-	; Pin A1 = output low.
-	; Pin A2,3 = input (pull down) no wakeup
+	; Pin A0* IR_PWR_1 (pulled high) = output high
+	; Pin A1* IR_DRV = output low
+	; Pin A2* (unused) = input (pull down) no wakeup
+	; Pin A3* (unused) = input (pull down) no wakeup
 	ld	a,#0011b	; Port A0,A1 = output
 	ld	(IOC_PA),a	; Port A1 direction
 	ld	a,#0001b
@@ -1126,16 +1149,37 @@ PODY_IO_Init:
 	ld	a,#1110b
 	ld	exio(papl),a	; Port A pull down 100kOhm resistor - A1,A2,A3
 	
-	; Pin B0,1,2,3 = input (pull up) no wakeup
+	; Pin B0* led1 (active low) = output low
+	; Pin B1* led2 (active low) = output high
+	; Pin B2  led3 (active low) = output low
+	; Pin B3  IR_PWR_2 (pulled high) = output high
+	ld	a,#1111b
+	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
+	ld	a,#1010b
+	ld	(data_pb),a	; Port B data (0=low/1=high)
 	ld	a,#0000b
-	ld	(IOC_PB),a	; Port B all input
-	ld	a,#0fh
-	ld	(data_pb),a	; Port B high
-	ld	exio(pbpu),a	; Port B pull up 100kOhm resistor - all
-	ld	a,#0
+	ld	exio(pbwk),a	; Port B wakeup
+	ld	a,#1010b
+	ld	exio(pbpu),a	; Port B pull up 100kOhm resistor 
+	ld	a,#0101b
 	ld	exio(pbpl),a	; Port B pull down 100kOhm resistor - none
-	ld	exio(pbwk),a	; Port B wakeup - none
-	
+
+	; Pin D0 power = output high
+	; Pin D1 user = input (pull down) wakeup
+	; Pin D2 (unused) = input (pull down) no wakeup
+	; Pin D3 IR_PWR_3 (pulled high) = output high
+#ifdef SUPPORT_PORTD
+	ld	a,#1001b
+	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
+	ld	a,#1001b
+	ld	(data_pd),a	; Port D data (0=low/1=high)
+	ld	a,#0010b
+	ld	exio(pdwk),a	; Port D wakeup
+	ld	a,#1001b
+	ld	exio(pdpu),a	; Port D pull up 100kOhm resistor 
+	ld	a,#0110b
+	ld	exio(pdpl),a	; Port B pull down 100kOhm resistor - none
+#endif
 	rets
 
 

@@ -15,6 +15,8 @@
 ;                   Register 1B
 ;****************************************************************************
 
+#define SUPPORT_PORTD 1
+;#define SUPPORT_RDETECT 0
 
 ;----------------------
 ;COMMON I/O            
@@ -120,4 +122,3 @@ PAWK		EQU	06H	; W, PORT A wake up control
 PBWK		EQU	07H	; W, PORT B wake up control 
 PDWK		EQU	08H	; W, PORT D wake up control 
 EXIOEND.
-
