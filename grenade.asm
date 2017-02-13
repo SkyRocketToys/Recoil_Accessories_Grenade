@@ -93,7 +93,7 @@ state_10	equ 12
 TIME_TICK     equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
 TIME_EXPLODE  equ 100*25/2 ; Size of explosion ticks in ms->interrupt units
 COUNT_EXPLODE equ 20 ; Number of explosion ticks before going to sleep
-COUNT_TICK    equ 10 ; Number of update ticks before going to next state
+COUNT_TICK    equ 10 ; Number of update ticks before going to next state (assumed to be even)
 
 ; -----------------------------------------------------------------------------
 ; User defined "registers" (SRAM variables)
@@ -1315,7 +1315,7 @@ Grenade_update_logic:
 	and a,#1 ; PD0 = user button
 	jz Grenade_Arm
 #ifdef DEMO_HARDWARE
-	jmp Grenade_Arm ; Since PD0 does not work
+	jmp Grenade_Arm ; Since PD0 does not work, arm on bootup
 #endif
 	rets
 
@@ -1374,15 +1374,18 @@ State1diff	equ	state_1-1 ; assembler is rubbish with in-place arithmetic
 	inc	(g_update) ; Allow new packet to be sent
 
 	ld	a,(g_substate0)
-	cmp	a,#COUNT_TICK
-	jz	gul_notick
+	cmp	a,#COUNT_TICK	; Assume it is even!
+	jnz	gul_not_next_state
+	; Go to the next state
 	dec	(g_state)
 	ld	a,#0
 	ld	(g_substate0),a
 	ld	(g_substate1),a
+gul_not_next_state:
 	rets
 
 
+; In the explode state
 gul_explode:
 	ld	a,(g_timer0)
 	cmp	a,#TIME_EXPLODE.n0
@@ -1409,10 +1412,9 @@ gul_boom:
 	ld	a,(g_timer3)
 	sbc	a,#TIME_EXPLODE.n3
 	ld	(g_timer3),a
+
 	inc	(g_substate0)
-	jz	gul_inc0
-	inc	(g_substate1)
-gul_inc0:
+	adr	(g_substate1)
 
 	; 10 times per second send the explosion event
 	ld	a,#1100b
@@ -1424,6 +1426,8 @@ gul_inc0:
 	ld	a,#0000b
 	ld	(Mcu_ID0),a
 	inc	(g_update)
+	
+	; Are we done?
 	ld	a,(g_substate0)
 	cmp	a,#COUNT_EXPLODE.n0
 	ld	a,(g_substate1)
@@ -1432,12 +1436,12 @@ gul_inc0:
 	rets
 
 gul_done:
+	; We have finished the explosion
 	ld	a,#state_unarmed
 	ld	(g_state),a
 	ld	a,#0
 	ld	(g_substate0),a
 	ld	(g_substate1),a
-	inc	(g_substate1)
 
 	; Force sleep mode
 	ld	a,#15
