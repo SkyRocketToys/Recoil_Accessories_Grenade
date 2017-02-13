@@ -41,102 +41,39 @@
 ;   Scaler2 = MCLK/8 = 1MHz
 ;   Timer1 = Unused
 ;   Timer2 = 80uS for protocol output
-;   RTC = Unused
+;   RTC = Unused (1 second)
 ; 
 ; GPIO usage
-;   PA0 = IR power 1 (output)
+;   PA0 = Enable first pair of LEDs
 ;   PA1 = 38kHz infrared (output) (high = LED on)
-;   PA2 = unused
-;   PA3 = unused
-;   PB0 = Visible LED1 (output)
-;   PB1 = Visible LED2 (output)
-;   PB2 = Visible LED3 (output)
-;   PB3 = IR power 2 (output)
-;   PD0 = Power (output)
-;   PD1 = User (input)
-;   PD2 = unused
-;   PD3 = IR power 3
+;   PA2 = Visible LED
+;   PA3 = unused (input only)
+;   PB0 = Power level 2 on infrared LEDs
+;   PB1 = Power level 3 on infrared LEDs
+;   PB2 = Power level 1 on infrared LEDs
+;   PB3 = Enable second pair of LEDs
+;   PD0 = Power detect (input)
+;   PD1 = Power on (output)
+;   PD2 = Enable fourth pair of LEDs
+;   PD3 = Enable third pair of LEDs
 ; 
-; *****************************************************************************
-; Timings
-;   Vishay have said that the TSOP4438 requires 35ms to cool down between packets
-;     So we tried sending packets once every 53ms (18Hz)
-; Group patterns
-;   Sets are sent continuously, consisting of
-;       20 fast packets sent at 30ms intervals (see GroupNumFast and Tim_SendPkt_F)
-;        2 slow packets sent at 100ms intervals (see GroupNumSlow and Tim_SendPkt_S)
-;       
-; *****************************************************************************
-; Protocol definitions
-;   True NEC protocol
-;       9mS header, 4.5mS header gap, 32 bits of 562.5uS tick, stop bit
-;       Payload bits: one = "10", Zero = "1000" in ticks.
-;   This NEC protocol (original)
-;       9mS header, 4.5mS header gap, 32 bits of 550uS tick, stop bit
-;       Payload bits: one = "10", Zero = "1000" in ticks.
-;   Manchester protocol
-;       4.5mS header, 2.25mS header gap, start bit, 32 bits of 320uS tick, stop bit
-;       Payload bits: one = "10", Zero = "01" in ticks.
 ; *****************************************************************************
 
 ; -----------------------------------------------------------------------------
 ; Include Block
 ; -----------------------------------------------------------------------------
+#define DEMO_HARDWARE 1
 #define USE_FIXED_SERIAL 1
 #define SUPPORT_PORTD 1 ; defined here since it does not seem to work when it is defined within an include file
+
 #include "tr4p153ct.inc" ; Emulator (same as grenade)
 ;#include "tr4p153bt.inc" ;Grenade (same as emulator)
 ;#include "tr4p151af.inc" ; Beacon (lacks portD)
 
-; -----------------------------------------------------------------------------
-; Primary choice: Choose the protocol to transmit
-;#define PROTOCOL_NEC32 ; (Original) NEC protocol with 32 bit payload (16 bit id) and full length header [WORKS]
-;#define PROTOCOL_NEC20 ; NEC protocol with 20 bit payload [MAYBE SUPPORTED]
-;#define PROTOCOL_MAN20 ; Manchester protocol with 20 bit payload [WORKS]
-;#define PROTOCOL_MAN16 ; Manchester protocol with 16 bit payload (pure serial number) [MAYBE SUPPORTED]
-;#define PROTOCOL_NEC9  ; NEC protocol with 9 bit payload (4 bit id) [NOT SUPPORTED]
-;#define PROTOCOL_MAN9  ; Manchester protocol with 9 bit payload (4 bit id) [NOT SUPPORTED]
-#define PROTOCOL_MAN20A ; Manchester protocol with 20 bit payload [MAYBE SUPPORTED]
+#include "protocol.inc"
 
-; -----------------------------------------------------------------------------
-; Supposedly secondary (generated) parameters for the Infrared protocol
-; Sadly the Tritan assembler does NOT process #define within a #ifdef correctly
-; It defines the constant even if the control block is false!
-; So the programmer needs to manually comment out the false ones
-#ifdef PROTOCOL_NEC32
-;#define PROTOCOL_NEC
-;#define PROTOCOL_32
-#endif
+OUTPUT_POWER	equ	3
 
-#ifdef PROTOCOL_NEC20
-;#define PROTOCOL_NEC
-;#define PROTOCOL_20
-#endif
-
-#ifdef PROTOCOL_MAN20
-;#define PROTOCOL_MAN
-;#define PROTOCOL_20
-#endif
-
-#ifdef PROTOCOL_MAN20A
-#define PROTOCOL_MAN
-#define PROTOCOL_20A
-#endif
-
-#ifdef PROTOCOL_MAN16
-;#define PROTOCOL_MAN
-;#define PROTOCOL_16
-#endif
-
-#ifdef PROTOCOL_NEC9
-;#define PROTOCOL_NEC
-;#define PROTOCOL_9
-#endif
-
-#ifdef PROTOCOL_MAN9
-;#define PROTOCOL_MAN
-;#define PROTOCOL_9
-#endif
 ; -----------------------------------------------------------------------------
 
 ; grenade logic equates
@@ -153,6 +90,11 @@ state_8	equ 9
 state_9	equ 10
 state_10	equ 12
 
+TIME_TICK     equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
+TIME_EXPLODE  equ 100*25/2 ; Size of explosion ticks in ms->interrupt units
+COUNT_EXPLODE equ 20 ; Number of explosion ticks before going to sleep
+COUNT_TICK    equ 10 ; Number of update ticks before going to next state
+
 ; -----------------------------------------------------------------------------
 ; User defined "registers" (SRAM variables)
 ; -----------------------------------------------------------------------------
@@ -165,7 +107,9 @@ A_SRT          ; Save the A register during an interrupt
 SramChk0_IN    ; Canary byte for checking SRAM corruption
 SramChk1_IN    ; ^
 
-Mcu_ID0        ; 16 bit unique ID read from OTP flash (set on startup)
+; The 16 bit payload data
+; In hover racer this was the MCU unique ID read from OTP flash (set on startup)
+Mcu_ID0        ; 16 bit packet data
 Mcu_ID1        ; ^
 Mcu_ID2        ; ^
 Mcu_ID3        ; ^
@@ -199,8 +143,10 @@ IR_Group0      ; 8 bit counter (incremented every packet) for checking fast vs s
 IR_Group1      ; ^  For main thread
 
 IR_Start_Flag  ; NonZero = Do not touch infrared
-IR_Flag        ; Bit0=header pulse has been sent. Bit1=header gap has been sent, Bit2=payload has been sent, Bit3=stop bit has been sent
-
+IR_Flag        ; Bit0=header pulse has been sent.
+	       ; Bit1=header gap has been sent
+	       ; Bit2=payload has been sent
+	       ; Bit3=stop bit has been sent
 IR_Num0        ; 8 bits: the number of payload bits that have been sent in this packet
 IR_Num1        ; ^ For interrupt thread
 
@@ -222,19 +168,16 @@ CRC_DATA2      ; ^
 CRC_DATA3      ; ^
 
 ; Grenade logic variables
-g_timer0
+g_update       ; true when we want to update the output packet (Mcu_ID0 has changed)
+g_timer0       ; Increments every 80us
 g_timer1
 g_timer2
 g_timer3
 
-g_timer_last0
-g_timer_last1
-g_timer_last2
-g_timer_last3
-
 g_state
-g_substate
-
+g_substate0
+g_substate1
+g_outi		; Which port to use for output
 
 }
 
@@ -245,86 +188,6 @@ IR_OnOff	equ USER1 ; set nonzero for on (copy to RTC register at next timer2 int
 ; General Parameters for the program
 Ram_chk_Dat     equ 5AH   ; Canary value for SRAM sanity checking
 VINT_MAH        equ 00    ; The SRAM bank we want to use inside the interrupt [Mind you, Optima overrides this]
-
-; Parameters for the Infrared protocol - speed choice
-Tim2_Speed	equ 256-80 ; 80uS timer2 interrupt
-Tim_SendPkt_F   equ 375    ; (12 bits in 40uS units) 30ms base timing for sending fast packets
-Tim_SendPkt_S   equ 1250   ; (12 bits in 40uS units) 100ms base timing for sending slow packets
-TIME_SLEEP      equ 60000  ; (16 bits in 30ms units) Timeout for sleep mode, in units of packets sent
-;TIME_SLEEP      equ 1000  ; (16 bits in 30ms units) Timeout for sleep mode, in units of packets sent
-
-; -----------------------------------------------------------------------------
-; Correctly generated parameters for the Infrared protocol
-#ifdef PROTOCOL_NEC32
-IR_BitNum_Dat   equ 32   ; Number of payload bits per packet
-#endif
-
-#ifdef PROTOCOL_NEC20
-IR_BitNum_Dat   equ 20   ; ^
-#endif
-
-#ifdef PROTOCOL_MAN20
-IR_BitNum_Dat   equ 20   ; ^
-#endif
-
-#ifdef PROTOCOL_MAN20A
-IR_BitNum_Dat   equ 20   ; ^
-#endif
-
-#ifdef PROTOCOL_MAN16
-IR_BitNum_Dat   equ 16   ; ^
-#endif
-
-#ifdef PROTOCOL_NEC9
-IR_BitNum_Dat   equ 9    ; ^
-#endif
-
-#ifdef PROTOCOL_MAN9
-IR_BitNum_Dat   equ 9    ; ^
-#endif
-
-; -----------------------------------------------------------------------------
-
-; Payload bit coding parameters
-IR_01_Dat       equ 4    ; For zero payload bits in NEC coding, the time spent high (in 80uS ticks)
-IR_00_Dat       equ 8	 ; For zero payload bits in NEC coding, the time spent high+low (in 80uS ticks)
-IR_11_Dat       equ 4    ; For one payload bits in NEC coding, the time spent high (in 80uS ticks)
-#ifdef PROTOCOL_MAN
-IR_10_Dat       equ 8   ; For one payload bits in Manchester coding, the time spent high+low (in 80uS ticks)
-#else
-IR_10_Dat       equ 16   ; For one payload bits in NEC coding, the time spent high+low (in 80uS ticks)
-#endif
-
-; NEC 32 parameter
-User_Dat_2Byte  equ 0F0H ; The 8 bit fixed portion of the 32 bit packet format
-
-; Parameters for the start bit
-#ifdef PROTOCOL_NEC32
-Tim_9ms         equ 90  ; The timer for 9ms header pulse
-tim_45ms        equ 45  ; 4.5ms header gap
-#else
-Tim_9ms         equ 32  ; Timer for 2.56ms header pulse (in 80uS units)
-tim_45ms        equ 16  ; Timer for 1.28ms header gap in 80uS units
-#endif
-#ifdef PROTOCOL_MAN
-tim_gapms	equ tim_45ms+IR_01_Dat ; Gap (including start bit)
-#else
-tim_gapms	equ tim_45ms-1 ; Gap (no start bit)
-#endif
-
-; Parameters for the stop bit
-IR_Last_Tim     equ 4   ; Timer for stop bit (in 80uS units)
-
-; Parameters for the CRC calculation
-GenPoly         equ 07H  ; Generator Polynomial for the CRC
-C_InitVal	equ 0    ; CRC initial value
-CRC_DataCnt     equ 16   ; Number of bits in the CRC (1..16 valid)
-
-; Parameters for the group calculation
-GroupNumFast	equ 30   ; Number of fast packets
-GroupNumSlow	equ 2    ; Number of slow packets
-; Generated parameters
-GroupNumTotal	equ GroupNumSlow+GroupNumFast
 
 
 ; -----------------------------------------------------------------------------
@@ -344,7 +207,7 @@ GroupNumTotal	equ GroupNumSlow+GroupNumFast
 	nop
 	nop
 
-	; (8) Entry point for interrupt start
+	; (8) Entry point for interrupt start (Timer1, Timer2, RTC)
 	ldpch	INT_Start
 	jmp	INT_Start
 
@@ -356,6 +219,7 @@ GroupNumTotal	equ GroupNumSlow+GroupNumFast
 ;       PCL = Program counter low
 ;       CZ  = Carry and Zero flags of the status register
 ;       ENINT = ENINT flag of the SYS0 register
+; Cannot call subroutines; must preserve other registers
 ; -----------------------------------------------------------------------------
 INT_Start:
 	ldmah	#VINT_MAH ; (Optima will do this anyway)
@@ -387,6 +251,12 @@ Timer1_Acked:
 ; This interrupt is from Timer2
 Tim2_Int_Prc:
 	clr	#3,(STATUS) ; Clear the timer2 interrupt flag
+
+	; Update timer for grenade logic
+	inc (g_timer0)
+	adr (g_timer1)
+	adr (g_timer2)
+	adr (g_timer3)
 
 	; Are we sending IR data?
 	ld	a,(IR_Start_Flag)
@@ -717,7 +587,7 @@ DELAY1:
 	ldpch	Clear_SRAM_INIT
 	call	Clear_SRAM_INIT
 
-	; Setup timer2 interrupt every 40 / 50uS
+	; Setup timer2 interrupt every 80uS
 	ldmah	#0
 	ldpch	Timer2_Init
 	call	Timer2_Init
@@ -725,6 +595,10 @@ DELAY1:
 	; Read the unique ID from OTP
 	ldpch	Read_Mcu_ID
 	Call	Read_Mcu_ID
+
+	; Initialise the grenade logic
+	ldpch	Grenade_init_logic
+	call	Grenade_init_logic
 
 	; Create the CRC for the data packet
 	ldpch	CRC_Chk_Code
@@ -755,7 +629,8 @@ WakeUp:
 
 ; -----------------------------------------------------------------------------
 ; Main loop for background tasks
-; The call stack is too short to implement routines but these are effectively subroutines
+; The call stack is too short to implement routines but these tasks are effectively subroutines
+; They can call subroutines themselves.
 MAIN_LOOP:
 	; Task 1 - system sanity check
 	ldpch	SYS_Check_Prc
@@ -821,7 +696,7 @@ SYS_Check_Prc:
 ; Main loop task 2/3
 ; Check for the packet trigger events (30ms / 100ms), i.e. that a new packet should be triggered
 Tim_SendPkt_Chk_Prc:
-	; Are we in fast packet moon or slow packet mode
+	; Are we in fast packet mode or slow packet mode
 	ld	a,(IR_Group0)
 	cmp	a,#GroupNumFast.n0
 	ld	a,(IR_Group1)
@@ -885,6 +760,24 @@ SendPkt_NoWrap:
 	adr	(Tim_SleepCount1)
 	adr	(Tim_SleepCount2)
 	adr	(Tim_SleepCount3)
+	
+	; Look at grenade logic for changing the payload
+	ld	a,#OUTPUT_POWER ; full power
+	ldpch	Grenade_update_power
+	call	Grenade_update_power
+	ldpch	Grenade_update_outi
+	call	Grenade_update_outi
+	ldpch	Grenade_update_visible
+	call	Grenade_update_visible
+	ldpch	Grenade_update_logic
+	call	Grenade_update_logic
+	
+	ld	a,(g_update)
+	jz	spk_same
+	dec	(g_update)
+	ldpch	CRC_Chk_Code
+	call	CRC_Chk_Code
+spk_same:
 	ldpch	Data_Int_Code
 	call	Data_Int_Code
 
@@ -1262,11 +1155,11 @@ Clear_SRAM_INIT:
 	rets
 	
 ; -----------------------------------------------------------------------------
-; Set up timer 2 for 40/50uS interrupt (25/20kHz) +/- 2%
+; Set up timer 2 for 80uS interrupt (12.5kHz) +/- 2%
 ; High speed oscillator HRCOSC = 32Mhz
 ; CPU clock FMCK = /4 = 8Mhz
 ; Scaler2 = Div8 = 1MHz
-; Timer2 = 0xCE = 20kHz (or 0xD8 = 25kHz)
+; Timer2 = 0xB0 = 12.5kHz
 Timer2_Init:
 	ld	a,#0
 	ld	(TMCTL),A;3:TM2EN,2:TM1EN,1:TM1SCK,0:TM1ALD
@@ -1303,7 +1196,8 @@ Grenade_init_logic:
 	ld (g_timer1),a
 	ld (g_timer2),a
 	ld (g_timer3),a
-	ld (g_substate),a
+	ld (g_substate0),a
+	ld (g_substate1),a
 	ld (g_state),a
 	rets
 
@@ -1318,7 +1212,8 @@ Grenade_arm:
 	ld (g_timer1),a
 	ld (g_timer2),a
 	ld (g_timer3),a
-	ld (g_substate),a
+	ld (g_substate0),a
+	ld (g_substate1),a
 	rets
 
 ; ----------------------------------------------------------------------------
@@ -1330,14 +1225,14 @@ Grenade_update_visible:
 	cmp a,#state_explode
 	jnz gvis_notexp
 	; Explosion
-	ld a,(g_substate)
+	ld a,(g_substate0)
 	and a,#1
 	jz gvis_off
 	jmp gvis_on
 
 gvis_notexp:
 	; Countdown
-	ld a,(g_substate)
+	ld a,(g_substate0)
 	cmp a,#0
 	jz gvis_off
 
@@ -1351,6 +1246,67 @@ gvis_off:
 
 
 ; ----------------------------------------------------------------------------
+; Code to update the output LED choice
+; PA0=EN_LED1
+; PB3=EN_LED2
+; PD3=EN_LED3
+; PD2=EN_LED4
+Grenade_update_outi:
+	inc	(g_outi)
+	ld	a,(g_outi)
+	and	a,#3
+	jz	gou_0
+	cmp	a,#1
+	jz	gou_1
+	cmp	a,#2
+	jz	gou_2
+gou_3:
+	set	#2,(DATA_PD)
+	clr	#3,(DATA_PD)
+	rets
+gou_2:
+	set	#3,(DATA_PD)
+	clr	#3,(DATA_PB)
+	rets
+gou_1:
+	set	#3,(DATA_PB)
+	clr	#0,(DATA_PA)
+	rets
+gou_0:
+	set	#0,(DATA_PA)
+	clr	#2,(DATA_PD)
+	rets
+
+
+; ----------------------------------------------------------------------------
+; Input: a=power level (1..3)
+; PB2=LVL_1
+; PB0=LVL_2
+; PB1=LVL_3
+Grenade_update_power:
+	cmp	a,#1
+	jz	gup_1
+	cmp	a,#2
+	jz	gup_2
+gup_3:
+	clr	#0,(DATA_PB)
+	clr	#2,(DATA_PB)
+	set	#1,(DATA_PB)
+	rets
+gup_2:
+	clr	#1,(DATA_PB)
+	clr	#2,(DATA_PB)
+	set	#0,(DATA_PB)
+	rets
+gup_1:
+	clr	#0,(DATA_PB)
+	clr	#1,(DATA_PB)
+	set	#2,(DATA_PB)
+	rets
+
+
+; ----------------------------------------------------------------------------
+; Update the grenade logic
 Grenade_update_logic:
 	ld a,(g_state)
 	cmp a,#state_unarmed
@@ -1358,68 +1314,138 @@ Grenade_update_logic:
 	ld a,(DATA_PD)
 	and a,#1 ; PD0 = user button
 	jz Grenade_Arm
+#ifdef DEMO_HARDWARE
+	jmp Grenade_Arm ; Since PD0 does not work
+#endif
 	rets
 
 gul_notunarmed:
+	cmp a,#state_explode
+	jz gul_explode
+
+
+	; Normal state
+	ld	a,(g_timer0)
+	cmp	a,#TIME_TICK.n0
+	ld	a,(g_timer1)
+	sbc	a,#TIME_TICK.n1
+	ld	a,(g_timer2)
+	sbc	a,#TIME_TICK.n2
+	ld	a,(g_timer3)
+	sbc	a,#TIME_TICK.n3
+	jnc	gul_tick ; >= tick
 	rets
 
-#if 0
-	; Increment g_timer according to timer
-	uint16_t nTimeLimit = 1428; // 100ms
-		if (grenade.state == state_explode)
-		{
-			nTimeLimit = 1000; // 70ms
-		}
-		if (grenade.timer >= nTimeLimit)
-		{
-			grenade.timer -= nTimeLimit;
-			grenade.substate++;
+; We have had a 100ms tick in the normal grenade state
+gul_tick:
+	clr	c
+	ld	a,(g_timer0)
+	sbc	a,#TIME_TICK.n0
+	ld	(g_timer0),a
+	ld	a,(g_timer1)
+	sbc	a,#TIME_TICK.n1
+	ld	(g_timer1),a
+	ld	a,(g_timer2)
+	sbc	a,#TIME_TICK.n2
+	ld	(g_timer2),a
+	ld	a,(g_timer3)
+	sbc	a,#TIME_TICK.n3
+	ld	(g_timer3),a
+	inc	(g_substate0)
+	adr	(g_substate1)
+
+	ld	a,(g_substate0)
+	and	a,#1
+	jz	gul_notick
+	rets
+
+; Every 200ms (second tick), send something
+gul_notick:
+	ld	a,#1100b
+	ld	(Mcu_ID3),a
+	ld	a,#1011b
+	ld	(Mcu_ID2),a
+	ld	a,#0000b
+	ld	(Mcu_ID1),a
+	ld	a,(g_state)
+State1diff	equ	state_1-1 ; assembler is rubbish with in-place arithmetic
+	sbc	a,#State1diff
+	ld	(Mcu_ID0),a
+	inc	(g_update) ; Allow new packet to be sent
+
+	ld	a,(g_substate0)
+	cmp	a,#COUNT_TICK
+	jz	gul_notick
+	dec	(g_state)
+	ld	a,#0
+	ld	(g_substate0),a
+	ld	(g_substate1),a
+	rets
 
 
-			uint16_t serial;
-			switch (grenade.state) {
-			case state_explode:
-				// 10 times per second send the explosion event
-				serial = 0xCB00U;
-				IRsend_queue_beacon(serial);
-				if (grenade.substate == 1)
-				{
-					UART2_Print("# Grenade exploded\r\n");
-				}
-				if (grenade.substate >= 20) // 1400ms explosion
-				{
-					grenade.state = state_unarmed;
-					grenade.substate = 0;
-					SleepPart1();
-				}
-				break;
-			case state_1:
-			case state_2:
-			case state_3:
-			case state_4:
-			case state_5:
-			case state_6:
-			case state_7:
-			case state_8:
-			case state_9:
-			case state_10:
-				if ((grenade.substate & 1) != 0) // 5 times per second
-				{
-					serial = 0xCB01U + grenade.state-state_1;
-					IRsend_queue_beacon(serial);
-				}
-				if (grenade.substate >= 10) // 1000ms in each tick
-				{
-					UART2_Print("# Grenade tick\r\n");
-					grenade.state--;
-					grenade.substate = 0;
-				}
-				break;
-			case state_unarmed:
-			default:
-				break;
-			}
-		}
-	}
+gul_explode:
+	ld	a,(g_timer0)
+	cmp	a,#TIME_EXPLODE.n0
+	ld	a,(g_timer1)
+	sbc	a,#TIME_EXPLODE.n1
+	ld	a,(g_timer2)
+	sbc	a,#TIME_EXPLODE.n2
+	ld	a,(g_timer3)
+	sbc	a,#TIME_EXPLODE.n3
+	jc	gul_boom
+	rets
+	
+gul_boom:
+	clr	c
+	ld	a,(g_timer0)
+	sbc	a,#TIME_EXPLODE.n0
+	ld	(g_timer0),a
+	ld	a,(g_timer1)
+	sbc	a,#TIME_EXPLODE.n1
+	ld	(g_timer1),a
+	ld	a,(g_timer2)
+	sbc	a,#TIME_EXPLODE.n2
+	ld	(g_timer2),a
+	ld	a,(g_timer3)
+	sbc	a,#TIME_EXPLODE.n3
+	ld	(g_timer3),a
+	inc	(g_substate0)
+	jz	gul_inc0
+	inc	(g_substate1)
+gul_inc0:
 
-#endif
+	; 10 times per second send the explosion event
+	ld	a,#1100b
+	ld	(Mcu_ID3),a
+	ld	a,#1011b
+	ld	(Mcu_ID2),a
+	ld	a,#0000b
+	ld	(Mcu_ID1),a
+	ld	a,#0000b
+	ld	(Mcu_ID0),a
+	inc	(g_update)
+	ld	a,(g_substate0)
+	cmp	a,#COUNT_EXPLODE.n0
+	ld	a,(g_substate1)
+	cmp	a,#COUNT_EXPLODE.n1
+	jc	gul_done
+	rets
+
+gul_done:
+	ld	a,#state_unarmed
+	ld	(g_state),a
+	ld	a,#0
+	ld	(g_substate0),a
+	ld	(g_substate1),a
+	inc	(g_substate1)
+
+	; Force sleep mode
+	ld	a,#15
+	ld	(Tim_SleepCount3),a
+	ld	a,#0
+	ld	(Tim_SleepCount2),a
+	ld	(Tim_SleepCount1),a
+	ld	(Tim_SleepCount0),a
+	rets
+
+; ----------------------------------------------------------------------------
