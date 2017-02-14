@@ -10,28 +10,8 @@
 ;     2048 instructions
 ;     256 nybbles of RAM
 ;     2.2V to 5.5V
-; 
-; PINOUT (*=common to both chips)
-; This involved switching PA3 and PB2 from the schematic 27jan2017 since PA3 is input only
-; 1 PD1  PWR_EN        14 PD2  EN_LED4
-; 2 PD0  PWR_BTN (low) 13 PD3  EN_LED3
-; 3 PB2  LVL_1         12 PB3  EN_LED2
-; 4 VDD*               11 VSS*
-; 5 PB1* LVL_3         10 PA0* EN_LED1
-; 6 PB0* LVL_2          9 PA1* MOD_OUT
-; 7 PA3* (input only)   8 PA2* LED (visible) (active low)
-; 
-; TR4P151AF = old hardware (beacon)
-;     6 pins (11 input/output, 1 input, vcc, gnd)
-;     2048 instructions
-;     256 nybbles of RAM
-;     2.2V to 5.5V
-; 
-; PINOUT
-; 1 VDD    8 VSS
-; 2 PB1    7 PA0
-; 3 PB0    6 PA1
-; 4 PA3    5 PA2
+; For pinout and GPIO usage see pinout.inc
+; For protocol timing see protocol.inc 
 ; *****************************************************************************
 ; 
 ; Resource usage
@@ -43,36 +23,23 @@
 ;   Timer2 = 80uS for protocol output
 ;   RTC = Unused (1 second)
 ; 
-; GPIO usage
-;   PA0 = Enable first pair of LEDs
-;   PA1 = 38kHz infrared (output) (high = LED on)
-;   PA2 = Visible LED
-;   PA3 = unused (input only)
-;   PB0 = Power level 2 on infrared LEDs
-;   PB1 = Power level 3 on infrared LEDs
-;   PB2 = Power level 1 on infrared LEDs
-;   PB3 = Enable second pair of LEDs
-;   PD0 = Power detect (input)
-;   PD1 = Power on (output)
-;   PD2 = Enable fourth pair of LEDs
-;   PD3 = Enable third pair of LEDs
-; 
 ; *****************************************************************************
 
 ; -----------------------------------------------------------------------------
 ; Include Block
 ; -----------------------------------------------------------------------------
-#define DEMO_HARDWARE 1
 #define USE_FIXED_SERIAL 1
-#define SUPPORT_PORTD 1 ; defined here since it does not seem to work when it is defined within an include file
+
+; Define one of these boards
+;#define BOARD_STEPHEN ; Initial prototype board from stephen with 4 pairs of infrared LEDs
+#define BOARD_DEVELOP ; PCB with 8 single infrared LEDs on a 3 to 8 demuxer
 
 #include "tr4p153ct.inc" ; Emulator (same as grenade)
 ;#include "tr4p153bt.inc" ;Grenade (same as emulator)
 ;#include "tr4p151af.inc" ; Beacon (lacks portD)
 
 #include "protocol.inc"
-
-OUTPUT_POWER	equ	3
+#include "pinout.inc"
 
 ; -----------------------------------------------------------------------------
 
@@ -179,6 +146,7 @@ g_substate0
 g_substate1
 g_outi		; Which port to use for output
 
+g_tmp		; For masking
 }
 
 ; This is cached to reduce interrupt jitter on the infrared output enable
@@ -663,14 +631,24 @@ SYS_Check_Prc:
 	ldmah	#0
 
 	; Set ports for input/output
+#ifdef BOARD_STEPHEN
 	ld	a,#0111b
 	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
 	ld	a,#1111b
 	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
-#ifdef SUPPORT_PORTD
 	ld	a,#1110b
 	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
 #endif
+
+#ifdef BOARD_DEVELOP
+	ld	a,#0110b
+	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
+	ld	a,#1111b
+	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
+	ld	a,#1110b
+	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
+#endif
+
 
 	; Kick the watchdog
 	ld	a,#05h
@@ -682,6 +660,7 @@ SYS_Check_Prc:
 	ld	a,#Ram_chk_Dat.n0
 	cmp	a,(SramChk0_IN)
 	; CPM: will there be an extra ldpch PGMSRT here? (It is controlled by Optima)
+	ldpch	PGMSRT
 	jnz	PGMSRT
 	ld	a,#Ram_chk_Dat.n1
 	cmp	a,(SramChk1_IN)
@@ -823,12 +802,20 @@ Chk_Halt_Tim_Prc:
 
 	; Turn off the visible LED and infrared LED
 	clr	#2,(RTC)        ; PA1 no output infrared beam
+#ifdef BOARD_STEPHEN
 	ld	a,#1000b
 	ld	(data_pa),a	; Port A0,1,2,3=low
 	ld	a,#0000b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
-#ifdef SUPPORT_PORTD
 	ld	a,#0011b
+	ld	(data_pd),a	; Port D data (0=low/1=high)
+#endif
+#ifdef BOARD_DEVELOP
+	ld	a,#0000b
+	ld	(data_pa),a	; Port A0,1,2,3=low
+	ld	a,#1000b
+	ld	(data_pb),a	; Port B data (0=low/1=high)
+	ld	a,#1111b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 #endif
 
@@ -1067,6 +1054,7 @@ Read_Mcu_ID:
 ; -----------------------------------------------------------------------------
 ; IO port initialization settings (e.g. pullup/pulldown/wakeup)
 PODY_IO_Init:
+#ifdef BOARD_STEPHEN
 	; Pin A0* EN_LED1 (active high) = output high for firing
 	; Pin A1* MOD_OUT (active high) = output low but PWM high on firing
 	; Pin A2* LED     (active low)  = output low
@@ -1101,10 +1089,55 @@ PODY_IO_Init:
 	; Pin D1  PWR_EN  (active high) = output high
 	; Pin D2  EN_LED4 (active high) = output low
 	; Pin D3  EN_LED3 (active high) = output low
-#ifdef SUPPORT_PORTD
 	ld	a,#1110b
 	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
 	ld	a,#0011b
+	ld	(data_pd),a	; Port D data (0=low/1=high)
+	ld	a,#0001b
+	ld	exio(pdwk),a	; Port D wakeup
+	ld	a,#0001b
+	ld	exio(pdpu),a	; Port D pull up 100kOhm resistor 
+	ld	a,#0000b
+	ld	exio(pdpl),a	; Port B pull down 100kOhm resistor - none
+#endif
+#ifdef BOARD_DEVELOP
+	; Pin A0          (unused)      = input pull high
+	; Pin A1  MOD_OUT (active high) = output low but PWM high on firing
+	; Pin A2  LED     (active low)  = output low
+	; Pin A3          (unused)      = input pull high
+	ld	a,#0110b
+	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
+	ld	a,#1001b
+	ld	(data_pa),a	; Port A data (0=low/1=high)
+	ld	a,#0000b
+	ld	exio(pawk),a	; Port A wakeup - none
+	ld	a,#1001b
+	ld	exio(papu),a	; Port A pull up 100kOhm resistor
+	ld	a,#0000b
+	ld	exio(papl),a	; Port A pull down 100kOhm resistor
+
+	; Pin B0  EN_A0   (active high) = output low
+	; Pin B1  EN_A1   (active high) = output low
+	; Pin B2  EN_A2   (active high) = output low
+	; Pin B3  LVL_1   (active low)  = output high
+	ld	a,#1111b
+	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
+	ld	a,#1000b
+	ld	(data_pb),a	; Port B data (0=low/1=high)
+	ld	a,#0000b
+	ld	exio(pbwk),a	; Port B wakeup
+	ld	a,#0000b
+	ld	exio(pbpu),a	; Port B pull up 100kOhm resistor 
+	ld	a,#0000b
+	ld	exio(pbpl),a	; Port B pull down 100kOhm resistor
+
+	; Pin D0  PWD_BTN (active low)  = input (pull up) wakeup
+	; Pin D1  PWR_EN  (active high) = output high
+	; Pin D2  LVL_3   (active low)  = output low
+	; Pin D3  LVL_2   (active low)  = output high
+	ld	a,#1110b
+	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
+	ld	a,#1011b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 	ld	a,#0001b
 	ld	exio(pdwk),a	; Port D wakeup
@@ -1237,23 +1270,22 @@ gvis_notexp:
 	jz gvis_off
 
 gvis_on:
-	clr #2,(DATA_PA)
+	clr #PIN_LED,(PORT_LED)
 	rets
 
 gvis_off:
-	set #2,(DATA_PA)
+	set #PIN_LED,(PORT_LED)
 	rets
 
 
 ; ----------------------------------------------------------------------------
 ; Code to update the output LED choice
-; PA0=EN_LED1
-; PB3=EN_LED2
-; PD3=EN_LED3
-; PD2=EN_LED4
+; (Stephen) PA0=EN_LED1, PB3=EN_LED2, PD3=EN_LED3, PD2=EN_LED4
+; (Develop) PB0, PB1, PB2 = address of LEDs (0..7)
 Grenade_update_outi:
 	inc	(g_outi)
 	ld	a,(g_outi)
+#ifdef BOARD_STEPHEN
 	and	a,#3
 	jz	gou_0
 	cmp	a,#1
@@ -1261,47 +1293,77 @@ Grenade_update_outi:
 	cmp	a,#2
 	jz	gou_2
 gou_3:
-	set	#2,(DATA_PD)
-	clr	#3,(DATA_PD)
+	set	#PIN_EN4,(PORT_EN4)
+	clr	#PIN_EN3,(PORT_EN3)
 	rets
 gou_2:
-	set	#3,(DATA_PD)
-	clr	#3,(DATA_PB)
+	set	#PIN_EN3,(PORT_EN3)
+	clr	#PIN_EN2,(PORT_EN2)
 	rets
 gou_1:
-	set	#3,(DATA_PB)
-	clr	#0,(DATA_PA)
+	set	#PIN_EN2,(PORT_EN2)
+	clr	#PIN_EN1,(PORT_EN1)
 	rets
 gou_0:
-	set	#0,(DATA_PA)
-	clr	#2,(DATA_PD)
+	set	#PIN_EN1,(PORT_EN1)
+	clr	#PIN_EN4,(PORT_EN4)
+#endif
+#ifdef BOARD_DEVELOP
+	and	a,#MASK_ENBITS
+	ld	(g_tmp),a
+	ld	a,(PORT_ENBITS)
+NOTMASK_ENBITS	equ	15-MASK_ENBITS
+	and	a,#NOTMASK_ENBITS
+	or	a,(g_tmp)
+	ld	(PORT_ENBITS),a
+#endif
 	rets
 
 
 ; ----------------------------------------------------------------------------
 ; Input: a=power level (1..3)
-; PB2=LVL_1
-; PB0=LVL_2
-; PB1=LVL_3
+; PB2/PB3=LVL_1
+; PB0/PD3=LVL_2
+; PB1/PD2=LVL_3
 Grenade_update_power:
 	cmp	a,#1
 	jz	gup_1
 	cmp	a,#2
 	jz	gup_2
+#ifdef BOARD_STEPHEN
+	; Active high
 gup_3:
-	clr	#0,(DATA_PB)
-	clr	#2,(DATA_PB)
-	set	#1,(DATA_PB)
+	clr	#PIN_LVL_1,(PORT_LVL_1)
+	clr	#PIN_LVL_2,(PORT_LVL_2)
+	set	#PIN_LVL_3,(PORT_LVL_3)
 	rets
 gup_2:
-	clr	#1,(DATA_PB)
-	clr	#2,(DATA_PB)
-	set	#0,(DATA_PB)
+	clr	#PIN_LVL_1,(PORT_LVL_1)
+	clr	#PIN_LVL_3,(PORT_LVL_3)
+	set	#PIN_LVL_2,(PORT_LVL_2)
 	rets
 gup_1:
-	clr	#0,(DATA_PB)
-	clr	#1,(DATA_PB)
-	set	#2,(DATA_PB)
+	clr	#PIN_LVL_2,(PORT_LVL_2)
+	clr	#PIN_LVL_3,(PORT_LVL_3)
+	set	#PIN_LVL_1,(PORT_LVL_1)
+#endif
+#ifdef BOARD_DEVELOP
+	; Active low
+gup_3:
+	set	#PIN_LVL_1,(PORT_LVL_1)
+	set	#PIN_LVL_2,(PORT_LVL_2)
+	clr	#PIN_LVL_3,(PORT_LVL_3)
+	rets
+gup_2:
+	set	#PIN_LVL_1,(PORT_LVL_1)
+	set	#PIN_LVL_3,(PORT_LVL_3)
+	clr	#PIN_LVL_2,(PORT_LVL_2)
+	rets
+gup_1:
+	set	#PIN_LVL_2,(PORT_LVL_2)
+	set	#PIN_LVL_3,(PORT_LVL_3)
+	clr	#PIN_LVL_1,(PORT_LVL_1)
+#endif
 	rets
 
 
@@ -1311,11 +1373,15 @@ Grenade_update_logic:
 	ld a,(g_state)
 	cmp a,#state_unarmed
 	jnz gul_notunarmed
-	ld a,(DATA_PD)
-	and a,#1 ; PD0 = user button
+	ld a,(PORT_PWR_BTN)
+BIT_PWR_BTN	equ	1<<PIN_PWR_BTN
+	and a,#BIT_PWR_BTN ; PD0 = user button
 	jz Grenade_Arm
-#ifdef DEMO_HARDWARE
+#ifdef BOARD_STEPHEN
 	jmp Grenade_Arm ; Since PD0 does not work, arm on bootup
+#endif
+#ifdef BOARD_DEVELOP
+	jmp Grenade_Arm ; For testing, arm on bootup
 #endif
 	rets
 
@@ -1363,7 +1429,7 @@ gul_tick:
 gul_notick:
 	ld	a,#1100b
 	ld	(Mcu_ID3),a
-	ld	a,#1011b
+	ld	a,#1001b
 	ld	(Mcu_ID2),a
 	ld	a,#0000b
 	ld	(Mcu_ID1),a
@@ -1419,7 +1485,7 @@ gul_boom:
 	; 10 times per second send the explosion event
 	ld	a,#1100b
 	ld	(Mcu_ID3),a
-	ld	a,#1011b
+	ld	a,#1001b
 	ld	(Mcu_ID2),a
 	ld	a,#0000b
 	ld	(Mcu_ID1),a
