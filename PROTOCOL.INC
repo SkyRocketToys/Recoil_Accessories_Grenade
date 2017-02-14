@@ -33,7 +33,7 @@
 ;#define PROTOCOL_MAN16 ; Manchester protocol with 16 bit payload (pure serial number) [MAYBE SUPPORTED]
 ;#define PROTOCOL_NEC9  ; NEC protocol with 9 bit payload (4 bit id) [NOT SUPPORTED]
 ;#define PROTOCOL_MAN9  ; Manchester protocol with 9 bit payload (4 bit id) [NOT SUPPORTED]
-#define PROTOCOL_MAN20A ; Manchester protocol with 20 bit payload [MAYBE SUPPORTED]
+;;;#define PROTOCOL_MAN20A ; Manchester protocol with 20 bit payload [SUPPORTED]	; moved to grenade.asm
 
 ; -----------------------------------------------------------------------------
 ; Supposedly secondary (generated) parameters for the Infrared protocol
@@ -56,8 +56,8 @@
 #endif
 
 #ifdef PROTOCOL_MAN20A
-#define PROTOCOL_MAN
-#define PROTOCOL_20A
+;;;#define PROTOCOL_MAN	; moved to grenade.asm
+;;;#define PROTOCOL_20A	; moved to grenade.asm
 #endif
 
 #ifdef PROTOCOL_MAN16

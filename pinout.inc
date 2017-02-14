@@ -9,6 +9,16 @@
 ;     256 nybbles of RAM
 ;     2.2V to 5.5V
 ; *****************************************************************************
+; PINOUT for Develop board 
+; 1 PD1  PWR_EN        14 PD2  LVL_3
+; 2 PD0  PWR_BTN (low) 13 PD3  LVL_2
+; 3 PB2  EN_A2         12 PB3  LVL_1
+; 4 VDD                11 VSS 
+; 5 PB1  EN_A1         10 PA0  (unused)
+; 6 PB0  EN_A0          9 PA1  MOD_OUT
+; 7 PA3  (input only)   8 PA2  LED (visible) (active low)
+; 
+; *****************************************************************************
 ; PINOUT for Stephens board (*=common to both chips)
 ; This involved switching PA3 and PB2 from the schematic 27jan2017 since PA3 is input only
 ; 1 PD1  PWR_EN        14 PD2  EN_LED4
@@ -48,21 +58,22 @@
 ;   PD3 = Enable third pair of LEDs
 ; 
 ; *****************************************************************************
-; GPIO usage for Simons development board (*=same same)
-;   PA0 = unused
-;   PA1*= 38kHz infrared (output) (high = LED on)
-;   PA2*= Visible LED
-;   PA3*= unused (input only)
-;   PB0 = Enable address 0
-;   PB1 = Enable address 1
-;   PB2 = Enable address 2
-;   PB3 = Power level 1 on infrared LEDs (active low)
-;   PD0*= Power detect (input)
-;   PD1*= Power on (output)
-;   PD2 = Power level 3 on infrared LEDs (active low)
-;   PD3 = Power level 2 on infrared LEDs (active low)
+; GPIO usage for Simons development board (*=same as stephens board)
+;   PA0 =         unused
+;   PA1*= MOD_OUT 38kHz infrared (output) (high = LED on)
+;   PA2*= LED     Visible LED
+;   PA3*=         unused (input only)
+;   PB0 = EN_A0   Enable address 0
+;   PB1 = EN_A1   Enable address 1
+;   PB2 = EN_A2   Enable address 2
+;   PB3 = LVL_1   Power level 1 on infrared LEDs (active low)
+;   PD0*= PWR_BTN Power detect (input)
+;   PD1*= PWR_EN  Power on (output)
+;   PD2 = LVL_3   Power level 3 on infrared LEDs (active low)
+;   PD3 = LVL_2   Power level 2 on infrared LEDs (active low)
 ; 
 ; *****************************************************************************
+
 
 OUTPUT_POWER	equ	3
 

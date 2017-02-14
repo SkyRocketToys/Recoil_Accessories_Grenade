@@ -26,14 +26,26 @@
 ; *****************************************************************************
 
 ; -----------------------------------------------------------------------------
-; Include Block
+; Defines ONLY WORK if they are defined here rather than in the include files
 ; -----------------------------------------------------------------------------
-#define USE_FIXED_SERIAL 1
 
 ; Define one of these boards
 ;#define BOARD_STEPHEN ; Initial prototype board from stephen with 4 pairs of infrared LEDs
 #define BOARD_DEVELOP ; PCB with 8 single infrared LEDs on a 3 to 8 demuxer
 
+; Choose an appropriate protocol from protocol.inc, and its subdefines
+; since the assembler does not get them correctly.
+#define PROTOCOL_MAN20A
+#define PROTOCOL_MAN
+#define PROTOCOL_20A
+
+#define USE_FIXED_SERIAL 1 ; Use a fixed serial number instead of 
+
+; -----------------------------------------------------------------------------
+; Include Block
+; -----------------------------------------------------------------------------
+
+; Include one of these three only
 #include "tr4p153ct.inc" ; Emulator (same as grenade)
 ;#include "tr4p153bt.inc" ;Grenade (same as emulator)
 ;#include "tr4p151af.inc" ; Beacon (lacks portD)
