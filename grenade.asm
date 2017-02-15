@@ -27,6 +27,7 @@
 
 ; -----------------------------------------------------------------------------
 ; Defines ONLY WORK if they are defined here rather than in the include files
+; Must be BEFORE include blocks
 ; -----------------------------------------------------------------------------
 
 ; Define one of these boards
@@ -40,6 +41,15 @@
 #define PROTOCOL_20A
 
 #define USE_FIXED_SERIAL 1 ; Use a fixed serial number instead of 
+
+; -----------------------------------------------------------------------------
+; Special simon demo for analysing power supply
+; 1. ADDRESS_MASK is always 0 (use LED 1 only)
+; 2. OUTPUT_POWER is always 0 (power levels off)
+; 3. 38kHz constantly - no modulation (IR_OnOff is assumed to be 1)
+; 4. long delay on reset (no 38khz output) 500ms+
+; 5. do not go to sleep
+#define SPECIAL_SIMON 1
 
 ; -----------------------------------------------------------------------------
 ; Include Block
@@ -73,6 +83,17 @@ TIME_TICK     equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
 TIME_EXPLODE  equ 100*25/2 ; Size of explosion ticks in ms->interrupt units
 COUNT_EXPLODE equ 20 ; Number of explosion ticks before going to sleep
 COUNT_TICK    equ 10 ; Number of update ticks before going to next state (assumed to be even)
+
+#ifdef SPECIAL_SIMON
+ADDRESS_MASK	equ	0
+#else
+#ifdef BOARD_STEPHEN
+ADDRESS_MASK	equ	3
+#endif
+#ifdef BOARD_DEVELOP
+ADDRESS_MASK	equ	7
+#endif
+#endif
 
 ; -----------------------------------------------------------------------------
 ; User defined "registers" (SRAM variables)
@@ -247,7 +268,11 @@ Tim2_Int_Prc:
 	adr	(IR_BaseTim1)
 	
 	; CPM: output high or low here at fixed location instead of all over the IRQ routine causing jitter
+#ifdef SPECIAL_SIMON
+	ld	a,#1	; Always on (38kHz carrier)
+#else
 	ld	a,(IR_OnOff)
+#endif
 	jz	IrIsOff
 	set	#2,(RTC) ; PA1 output infrared beam
 	jmp	IrIsDone
@@ -493,7 +518,10 @@ Ir_Last_data_Rx_Ok_Prc:
 	jnz	INT_End 
 
 	clr	#2,(IR_OnOff) ; PA1 no output infrared beam
+#ifdef SPECIAL_SIMON
+#else
 	clr	#2,(RTC) ; PA1 no output infrared beam
+#endif
 	ld	A,#01
 	ld	(IR_Start_Flag),A
 
@@ -530,7 +558,11 @@ PGM_Delay:
 	ld	(21H),A
 	ld	(22H),A
 	ld	(23H),A
-	ld	A,#0DH
+#ifdef SPECIAL_SIMON
+	ld	A,#08h ; Longer delay
+#else
+	ld	A,#0DH ; Short delay
+#endif
 	ld	(24H),A ; 20 bit timer 0xD0000
 DELAY1:
 	ld	A,#05H
@@ -793,6 +825,10 @@ spk_same:
 ; Main loop task 3/3
 ; Check for going to sleep
 Chk_Halt_Tim_Prc:
+#ifdef SPECIAL_SIMON
+	ldpch	Chk_Halt_Tim_RP
+	jmp	Chk_Halt_Tim_RP
+#endif
 	; Compare the 16 bit sleep mode counter with sleep
 	clr	c
 	ld	a,(Tim_SleepCount0)
@@ -1145,11 +1181,11 @@ PODY_IO_Init:
 
 	; Pin D0  PWD_BTN (active low)  = input (pull up) wakeup
 	; Pin D1  PWR_EN  (active high) = output high
-	; Pin D2  LVL_3   (active low)  = output low
+	; Pin D2  LVL_3   (active low)  = output high
 	; Pin D3  LVL_2   (active low)  = output high
 	ld	a,#1110b
 	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
-	ld	a,#1011b
+	ld	a,#1111b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 	ld	a,#0001b
 	ld	exio(pdwk),a	; Port D wakeup
@@ -1297,6 +1333,7 @@ gvis_off:
 Grenade_update_outi:
 	inc	(g_outi)
 	ld	a,(g_outi)
+	and	a,#ADDRESS_MASK
 #ifdef BOARD_STEPHEN
 	and	a,#3
 	jz	gou_0
@@ -1338,6 +1375,8 @@ NOTMASK_ENBITS	equ	15-MASK_ENBITS
 ; PB0/PD3=LVL_2
 ; PB1/PD2=LVL_3
 Grenade_update_power:
+	cmp	a,#0
+	jz	gup_0
 	cmp	a,#1
 	jz	gup_1
 	cmp	a,#2
@@ -1358,6 +1397,11 @@ gup_1:
 	clr	#PIN_LVL_2,(PORT_LVL_2)
 	clr	#PIN_LVL_3,(PORT_LVL_3)
 	set	#PIN_LVL_1,(PORT_LVL_1)
+	rets
+gup_0:
+	clr	#PIN_LVL_2,(PORT_LVL_2)
+	clr	#PIN_LVL_3,(PORT_LVL_3)
+	clr	#PIN_LVL_1,(PORT_LVL_1)
 #endif
 #ifdef BOARD_DEVELOP
 	; Active low
@@ -1375,6 +1419,11 @@ gup_1:
 	set	#PIN_LVL_2,(PORT_LVL_2)
 	set	#PIN_LVL_3,(PORT_LVL_3)
 	clr	#PIN_LVL_1,(PORT_LVL_1)
+	rets
+gup_0:
+	set	#PIN_LVL_2,(PORT_LVL_2)
+	set	#PIN_LVL_3,(PORT_LVL_3)
+	set	#PIN_LVL_1,(PORT_LVL_1)
 #endif
 	rets
 

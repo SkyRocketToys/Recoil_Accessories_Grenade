@@ -74,8 +74,11 @@
 ; 
 ; *****************************************************************************
 
-
+#if SPECIAL_SIMON
+OUTPUT_POWER	equ	0
+#else
 OUTPUT_POWER	equ	3
+#endif
 
 ; Soft power button
 PORT_PWR_EN	equ	DATA_PD
