@@ -9,6 +9,16 @@
 ;     256 nybbles of RAM
 ;     2.2V to 5.5V
 ; *****************************************************************************
+; PINOUT for March 2017 board 
+; 1 PD1  EN_1          14 PD2  EN_6
+; 2 PD0  EN_2          13 PD3  EN_8
+; 3 PB2  EN_3          12 PB3  EN_5
+; 4 VDD                11 VSS  
+; 5 PB1  EN_4          10 PA0  EN_7
+; 6 PB0  PWR_EN         9 PA1  MOD_OUT
+; 7 PA3  PWR_BTN (low)  8 PA2  LED (visible) (active low)
+; 
+; *****************************************************************************
 ; PINOUT for Develop board 
 ; 1 PD1  PWR_EN        14 PD2  LVL_3
 ; 2 PD0  PWR_BTN (low) 13 PD3  LVL_2
@@ -73,6 +83,21 @@
 ;   PD3 = LVL_2   Power level 2 on infrared LEDs (active low)
 ; 
 ; *****************************************************************************
+; GPIO usage for March 2017 board
+;   PA0 = EN_7
+;   PA1*= MOD_OUT 38kHz infrared (output) (high = LED on)
+;   PA2*= LED     Visible LED
+;   PA3 = PWR_BTN Power detect (input)
+;   PB0 = PWR_EN  Power on (output)
+;   PB1 = EN_4
+;   PB2 = EN_3
+;   PB3 = EN_5
+;   PD0 = EN_2
+;   PD1 = EN_1
+;   PD2 = EN_6
+;   PD3 = EN_8
+; 
+; *****************************************************************************
 
 #if SPECIAL_SIMON
 OUTPUT_POWER	equ	0
@@ -80,17 +105,47 @@ OUTPUT_POWER	equ	0
 OUTPUT_POWER	equ	3
 #endif
 
+; Visible LED (same on all boards)
+PORT_LED	equ	DATA_PA
+PIN_LED		equ	2
+
+; ----------------------------------------------------------------------------
+
+#ifdef BOARD_8LEDS
+; Soft power button
+PORT_PWR_EN	equ	DATA_PB
+PIN_PWR_EN	equ	0
+PORT_PWR_BTN	equ	DATA_PA
+PIN_PWR_BTN	equ	3
+
+; LED enables (8 to 8)
+PORT_EN1	equ	DATA_PD
+PIN_EN1		equ	1 ;   PD1 = Enable first LED
+PORT_EN2	equ	DATA_PD
+PIN_EN2		equ	0 ;   PD0 = Enable second LED
+PORT_EN3	equ	DATA_PB
+PIN_EN3		equ	2 ;   PB2 = Enable third LED
+PORT_EN4	equ	DATA_PB
+PIN_EN4		equ	1 ;   PB1 = Enable fourth LED
+PORT_EN5	equ	DATA_PB
+PIN_EN5		equ	3 ;   PB3 = Enable fifth LED
+PORT_EN6	equ	DATA_PD
+PIN_EN6		equ	2 ;   PD2 = Enable sixth LED
+PORT_EN7	equ	DATA_PA
+PIN_EN7		equ	0 ;   PA0 = Enable seventh LED
+PORT_EN8	equ	DATA_PD
+PIN_EN8		equ	3 ;   PD3 = Enable eighth LED
+#endif
+
+; ----------------------------------------------------------------------------
+
+#ifdef BOARD_STEPHEN
 ; Soft power button
 PORT_PWR_EN	equ	DATA_PD
 PIN_PWR_EN	equ	1
 PORT_PWR_BTN	equ	DATA_PD
 PIN_PWR_BTN	equ	0
 
-; Visible LED
-PORT_LED	equ	DATA_PA
-PIN_LED		equ	2
-
-#ifdef BOARD_STEPHEN
 ; Infrared power
 PORT_LVL_1	equ	DATA_PB
 PIN_LVL_1	equ	2	; Active high
@@ -110,7 +165,15 @@ PORT_EN4	equ	DATA_PD
 PIN_EN4		equ	2 ;   PD2 = Enable fourth pair of LEDs
 #endif
 
+; ----------------------------------------------------------------------------
+
 #ifdef BOARD_DEVELOP
+; Soft power button
+PORT_PWR_EN	equ	DATA_PD
+PIN_PWR_EN	equ	1
+PORT_PWR_BTN	equ	DATA_PD
+PIN_PWR_BTN	equ	0
+
 ; Infrared power
 PORT_LVL_1	equ	DATA_PB
 PIN_LVL_1	equ	3	; Active low

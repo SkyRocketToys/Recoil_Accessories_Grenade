@@ -28,11 +28,13 @@
 ; -----------------------------------------------------------------------------
 ; Defines ONLY WORK if they are defined here rather than in the include files
 ; Must be BEFORE include blocks
+;  "BOARD_MARCH" fails to compile so we use "BOARD_8LEDS"
 ; -----------------------------------------------------------------------------
 
-; Define one of these boards
+; Define one of these boards.
+#define BOARD_8LEDS ; PCB with 8 single infrared LEDs on individual pins
 ;#define BOARD_STEPHEN ; Initial prototype board from stephen with 4 pairs of infrared LEDs
-#define BOARD_DEVELOP ; PCB with 8 single infrared LEDs on a 3 to 8 demuxer
+;#define BOARD_DEVELOP ; PCB with 8 single infrared LEDs on a 3 to 8 demuxer
 
 ; Choose an appropriate protocol from protocol.inc, and its subdefines
 ; since the assembler does not get them correctly.
@@ -91,6 +93,9 @@ ADDRESS_MASK	equ	0
 ADDRESS_MASK	equ	3
 #endif
 #ifdef BOARD_DEVELOP
+ADDRESS_MASK	equ	7
+#endif
+#ifdef BOARD_8LEDS
 ADDRESS_MASK	equ	7
 #endif
 #endif
@@ -679,18 +684,27 @@ SYS_Check_Prc:
 	ld	a,#0111b
 	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
 	ld	a,#1111b
-	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
+	ld	(IOC_PB),a	; Port B direction (0=input/1=output)
 	ld	a,#1110b
-	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
+	ld	(IOC_PD),a	; Port D direction (0=input/1=output)
 #endif
 
 #ifdef BOARD_DEVELOP
 	ld	a,#0110b
 	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
 	ld	a,#1111b
-	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
+	ld	(IOC_PB),a	; Port B direction (0=input/1=output)
 	ld	a,#1110b
-	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
+	ld	(IOC_PD),a	; Port D direction (0=input/1=output)
+#endif
+
+#ifdef BOARD_8LEDS
+	ld	a,#0111b
+	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
+	ld	a,#1111b
+	ld	(IOC_PB),a	; Port B direction (0=input/1=output)
+	ld	a,#1111b
+	ld	(IOC_PD),a	; Port D direction (0=input/1=output)
 #endif
 
 
@@ -852,7 +866,7 @@ Chk_Halt_Tim_Prc:
 	clr	#2,(RTC)        ; PA1 no output infrared beam
 #ifdef BOARD_STEPHEN
 	ld	a,#1000b
-	ld	(data_pa),a	; Port A0,1,2,3=low
+	ld	(data_pa),a	; Port A data (0=low/1=high)
 	ld	a,#0000b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
 	ld	a,#0011b
@@ -860,10 +874,18 @@ Chk_Halt_Tim_Prc:
 #endif
 #ifdef BOARD_DEVELOP
 	ld	a,#0000b
-	ld	(data_pa),a	; Port A0,1,2,3=low
+	ld	(data_pa),a	; Port A data (0=low/1=high)
 	ld	a,#1000b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
 	ld	a,#1111b
+	ld	(data_pd),a	; Port D data (0=low/1=high)
+#endif
+#ifdef BOARD_8LEDS
+	ld	a,#1000b
+	ld	(data_pa),a	; Port A data (0=low/1=high)
+	ld	a,#0001b
+	ld	(data_pb),a	; Port B data (0=low/1=high)
+	ld	a,#0000b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 #endif
 
@@ -1194,6 +1216,52 @@ PODY_IO_Init:
 	ld	a,#0000b
 	ld	exio(pdpl),a	; Port B pull down 100kOhm resistor - none
 #endif
+#ifdef BOARD_8LEDS
+	; Pin A0  EN_     (active high) = output low
+	; Pin A1  MOD_OUT (active high) = output low but PWM high on firing
+	; Pin A2  LED     (active low)  = output low
+	; Pin A3  PWD_BTN (active low)  = input (pull up) wakeup
+	ld	a,#0111b
+	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
+	ld	a,#1000b
+	ld	(data_pa),a	; Port A data (0=low/1=high)
+	ld	a,#1000b
+	ld	exio(pawk),a	; Port A wakeup - none
+	ld	a,#1000b
+	ld	exio(papu),a	; Port A pull up 100kOhm resistor
+	ld	a,#0000b
+	ld	exio(papl),a	; Port A pull down 100kOhm resistor
+
+	; Pin B0  PWR_EN  (active high) = output high
+	; Pin B1  EN_     (active high) = output low
+	; Pin B2  EN_     (active high) = output low
+	; Pin B3  EN_     (active high) = output low
+	ld	a,#1111b
+	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
+	ld	a,#0001b
+	ld	(data_pb),a	; Port B data (0=low/1=high)
+	ld	a,#0000b
+	ld	exio(pbwk),a	; Port B wakeup
+	ld	a,#0000b
+	ld	exio(pbpu),a	; Port B pull up 100kOhm resistor 
+	ld	a,#0000b
+	ld	exio(pbpl),a	; Port B pull down 100kOhm resistor
+
+	; Pin D0  EN_     (active high) = output low
+	; Pin D1  EN_     (active high) = output low
+	; Pin D2  EN_     (active high) = output low
+	; Pin D3  EN_     (active high) = output low
+	ld	a,#1111b
+	ld	(IOC_PD),a	; Port D dir (0=input/1=output)
+	ld	a,#0000b
+	ld	(data_pd),a	; Port D data (0=low/1=high)
+	ld	a,#0000b
+	ld	exio(pdwk),a	; Port D wakeup
+	ld	a,#0000b
+	ld	exio(pdpu),a	; Port D pull up 100kOhm resistor 
+	ld	a,#0000b
+	ld	exio(pdpl),a	; Port B pull down 100kOhm resistor - none
+#endif
 	rets
 
 
@@ -1330,6 +1398,7 @@ gvis_off:
 ; Code to update the output LED choice
 ; (Stephen) PA0=EN_LED1, PB3=EN_LED2, PD3=EN_LED3, PD2=EN_LED4
 ; (Develop) PB0, PB1, PB2 = address of LEDs (0..7)
+; (8LEDS)   PD1, PD0, PB2, PB1, PB3, PD2, PA0, PD3 = EN_LED (1..8)
 Grenade_update_outi:
 	inc	(g_outi)
 	ld	a,(g_outi)
@@ -1366,6 +1435,53 @@ NOTMASK_ENBITS	equ	15-MASK_ENBITS
 	or	a,(g_tmp)
 	ld	(PORT_ENBITS),a
 #endif
+#ifdef BOARD_8LEDS
+	and	a,#7
+	jz	gou_0
+	cmp	a,#1
+	jz	gou_1
+	cmp	a,#2
+	jz	gou_2
+	cmp	a,#3
+	jz	gou_3
+	cmp	a,#4
+	jz	gou_4
+	cmp	a,#5
+	jz	gou_5
+	cmp	a,#6
+	jz	gou_6
+gou_7:
+	set	#PIN_EN8,(PORT_EN8)
+	clr	#PIN_EN7,(PORT_EN7)
+	rets
+gou_6:
+	set	#PIN_EN7,(PORT_EN7)
+	clr	#PIN_EN6,(PORT_EN6)
+	rets
+gou_5:
+	set	#PIN_EN6,(PORT_EN6)
+	clr	#PIN_EN5,(PORT_EN5)
+	rets
+gou_4:
+	set	#PIN_EN5,(PORT_EN5)
+	clr	#PIN_EN4,(PORT_EN4)
+	rets
+gou_3:
+	set	#PIN_EN4,(PORT_EN4)
+	clr	#PIN_EN3,(PORT_EN3)
+	rets
+gou_2:
+	set	#PIN_EN3,(PORT_EN3)
+	clr	#PIN_EN2,(PORT_EN2)
+	rets
+gou_1:
+	set	#PIN_EN2,(PORT_EN2)
+	clr	#PIN_EN1,(PORT_EN1)
+	rets
+gou_0:
+	set	#PIN_EN1,(PORT_EN1)
+	clr	#PIN_EN8,(PORT_EN8)
+#endif
 	rets
 
 
@@ -1381,6 +1497,7 @@ Grenade_update_power:
 	jz	gup_1
 	cmp	a,#2
 	jz	gup_2
+	
 #ifdef BOARD_STEPHEN
 	; Active high
 gup_3:
@@ -1403,6 +1520,7 @@ gup_0:
 	clr	#PIN_LVL_3,(PORT_LVL_3)
 	clr	#PIN_LVL_1,(PORT_LVL_1)
 #endif
+
 #ifdef BOARD_DEVELOP
 	; Active low
 gup_3:
@@ -1425,6 +1543,14 @@ gup_0:
 	set	#PIN_LVL_3,(PORT_LVL_3)
 	set	#PIN_LVL_1,(PORT_LVL_1)
 #endif
+
+#ifdef BOARD_8LEDS
+	; No levels
+gup_3:
+gup_2:
+gup_1:
+gup_0:
+#endif
 	rets
 
 
@@ -1442,6 +1568,9 @@ BIT_PWR_BTN	equ	1<<PIN_PWR_BTN
 	jmp Grenade_Arm ; Since PD0 does not work, arm on bootup
 #endif
 #ifdef BOARD_DEVELOP
+	jmp Grenade_Arm ; For testing, arm on bootup
+#endif
+#ifdef BOARD_8LEDS
 	jmp Grenade_Arm ; For testing, arm on bootup
 #endif
 	rets
