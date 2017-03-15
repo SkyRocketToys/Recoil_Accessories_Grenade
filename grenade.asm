@@ -51,7 +51,7 @@
 ; 3. 38kHz constantly - no modulation (IR_OnOff is assumed to be 1)
 ; 4. long delay on reset (no 38khz output) 500ms+
 ; 5. do not go to sleep
-#define SPECIAL_SIMON 1
+;#define SPECIAL_SIMON 1
 
 ; -----------------------------------------------------------------------------
 ; Include Block
@@ -837,7 +837,8 @@ spk_same:
 
 ; -----------------------------------------------------------------------------
 ; Main loop task 3/3
-; Check for going to sleep
+; Check for going to sleep (after sending many packets).
+; This should only happen when the logic sets sleep count to a high value.
 Chk_Halt_Tim_Prc:
 #ifdef SPECIAL_SIMON
 	ldpch	Chk_Halt_Tim_RP
@@ -881,17 +882,22 @@ Chk_Halt_Tim_Prc:
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 #endif
 #ifdef BOARD_8LEDS
+	; Important pins: PB0 = 0 (power off)
+	; PA2 = 0 (LED on to draw some current)
 	ld	a,#1000b
 	ld	(data_pa),a	; Port A data (0=low/1=high)
-	ld	a,#0001b
+	ld	a,#0000b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
 	ld	a,#0000b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 #endif
-
 	clr	#1,(SYS0) ; Clear ENINT and disable interrupts
 	nop
+PowerOffLoop:
 	nop
+	nop
+	jmp	PowerOffLoop
+	; Orphaned code = this used too little current so it did not drain the capacitor.
 	halt 
 Chk_Halt_Tim_End:
 	ldpch	Chk_Halt_Tim_RP
