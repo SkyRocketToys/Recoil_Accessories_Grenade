@@ -1226,12 +1226,12 @@ PODY_IO_Init:
 	; Pin A0  EN_     (active high) = output low
 	; Pin A1  MOD_OUT (active high) = output low but PWM high on firing
 	; Pin A2  LED     (active low)  = output low
-	; Pin A3  PWD_BTN (active low)  = input (pull up) wakeup
+	; Pin A3  PWD_BTN (active low)  = input (pull up) no wakeup
 	ld	a,#0111b
 	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
 	ld	a,#1000b
 	ld	(data_pa),a	; Port A data (0=low/1=high)
-	ld	a,#1000b
+	ld	a,#0000b
 	ld	exio(pawk),a	; Port A wakeup - none
 	ld	a,#1000b
 	ld	exio(papu),a	; Port A pull up 100kOhm resistor
