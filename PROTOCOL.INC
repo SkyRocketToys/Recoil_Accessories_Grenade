@@ -8,9 +8,12 @@
 ;   Vishay have said that the TSOP4438 requires 35ms to cool down between packets
 ;     So we tried sending packets once every 53ms (18Hz)
 ; Group patterns
-;   Sets are sent continuously, consisting of
-;       20 fast packets sent at 30ms intervals (see GroupNumFast and Tim_SendPkt_F)
-;        2 slow packets sent at 100ms intervals (see GroupNumSlow and Tim_SendPkt_S)
+;   Sets are sent once per second, consisting of
+;       Warning sets (countdown to explosion)
+;          16 fast packets sent at 30ms intervals (see WarningNumFast and Tim_SendPkt_F)
+;       Explosion sets sent at
+;          24 fast packets sent at 30ms intervals (see ExplodeNumFast and Tim_SendPkt_F)
+;           8 slow packets sent at 100ms intervals (see ExplodeNumSlow and Tim_SendPkt_S)
 ;       
 ; *****************************************************************************
 ; Protocol definitions
@@ -150,9 +153,15 @@ GenPoly         equ 07H  ; Generator Polynomial for the CRC
 C_InitVal	equ 0    ; CRC initial value
 CRC_DataCnt     equ 16   ; Number of bits in the CRC (1..16 valid)
 
-; Parameters for the group calculation
-GroupNumFast	equ 14   ; Number of fast packets
-GroupNumSlow	equ 2    ; Number of slow packets
+; Parameters for the warning infrared packets
+WarningNumFast	equ 16   ; Number of fast packets
+WarningNumSlow	equ 0    ; Number of slow packets
 ; Generated parameters
-GroupNumTotal	equ GroupNumSlow+GroupNumFast
+WarningNumTotal	equ WarningNumSlow+WarningNumFast
+
+; Parameters for the explode infrared packets
+ExplodeNumFast	equ 24   ; Number of fast packets
+ExplodeNumSlow	equ 8    ; Number of slow packets
+; Generated parameters
+ExplodeNumTotal	equ ExplodeNumSlow+ExplodeNumFast
 

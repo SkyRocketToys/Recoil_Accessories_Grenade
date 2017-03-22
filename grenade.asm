@@ -161,10 +161,7 @@ IR_BIT_OK_FLAG ; True iff IR_Bit is valid. False if a new payload bit should be 
 IR_Bit         ; The value of the current transmitting payload bit (0 or 1)
 LastTim1       ; Used for checking that multi nybble comparisons have not been invalidated
 ; (would be a bank boundary if this was handled manually)
-Tim_SleepCount0    ; 16 bit timer counter for sleep mode. Counts up on every packet sent.
-Tim_SleepCount1    ; ^ for main thread
-Tim_SleepCount2    ; ^
-Tim_SleepCount3    ; ^
+g_poweroff     ; Flag to turn the power off (no sleep mode in this project)
 
 ; CRC variables (second bank)
 CRC_DATA0      ; Calculated 16 bit CRC input buffer
@@ -260,10 +257,10 @@ Tim2_Int_Prc:
 	clr	#3,(STATUS) ; Clear the timer2 interrupt flag
 
 	; Update timer for grenade logic
-	inc (g_timer0)
-	adr (g_timer1)
-	adr (g_timer2)
-	adr (g_timer3)
+	inc	(g_timer0)
+	adr	(g_timer1)
+	adr	(g_timer2)
+	adr	(g_timer3)
 
 	; Are we sending IR data?
 	ld	a,(IR_Start_Flag)
@@ -740,7 +737,6 @@ SYS_Check_Prc:
 	ld	(IOC_PD),a	; Port D direction (0=input/1=output)
 #endif
 
-
 	; Kick the watchdog
 	ld	a,#05h
 	ld	(WDT),a
@@ -750,7 +746,6 @@ SYS_Check_Prc:
 	; Check the SRAM canary to see if it has been corrupted
 	ld	a,#Ram_chk_Dat.n0
 	cmp	a,(SramChk0_IN)
-	; CPM: will there be an extra ldpch PGMSRT here? (It is controlled by Optima)
 	ldpch	PGMSRT
 	jnz	PGMSRT
 	ld	a,#Ram_chk_Dat.n1
@@ -776,15 +771,23 @@ Tim_SendPkt_Chk_Prc:
 	ldpch	Tim_SendPkt_Chk_RP 
 	jz	Tim_SendPkt_Chk_RP
 
+SendPkt_TestAgain:
+	; Are we in explosion mode (many fast+slow packets) or tick mode (fewer fast packets)
+	ld	a,(g_state)
+	cmp	a,#state_explode
+	jnz	SendPkt_TestFast	; Just test for fast packets
+
+SendPkt_TestExplode:
 	; OK we want to be sending packets now
 	; Are we in fast packet mode or slow packet mode
 	ld	a,(IR_Group0)
-	cmp	a,#GroupNumFast.n0
+	cmp	a,#ExplodeNumFast.n0
 	ld	a,(IR_Group1)
-	sbc	a,#GroupNumFast.n1
+	sbc	a,#ExplodeNumFast.n1
 	ldpch	SendPkt_TestFast
 	jc	SendPkt_TestFast
 
+SendPkt_TestSlow:
 	; Test timing for slow packets
 	; Note that an interrupt here can cause the counter to be inconsistent
 	ld	a,(Tim_SendPkt1)
@@ -816,7 +819,7 @@ SendPkt_Trigger:
 	; Sanity check - has the bottom nybble of the 12 bit number changed during the comparison, invalidating it?
 	ld	a,(Tim_SendPkt1)
 	cmp	a,(LastTim1)
-	jnz	Tim_SendPkt_Chk_Prc	; Redo the test! If the number went from 1FF to 200 during the test (because interrupt) we might think it was 2FF!
+	jnz	SendPkt_TestAgain	; Redo the test! If the number went from 1FF to 200 during the test (because interrupt) we might think it was 2FF!
 	
 	; We can start triggering a new packet - stop current output
 	ld	a,#1 ; Disable messing with IR
@@ -825,26 +828,35 @@ SendPkt_Trigger:
 	; Increment packet count within the group
 	inc	(IR_Group0)
 	adr	(IR_Group1)
-	; Have we finished the set of fast and slow packets?
+
+	; Are we in the explosion state?
+	ld	a,(g_state)
+	cmp	a,#state_explode
+	jnz	SendPkt_Xgroup
+
+	; Have we finished the set of fast packets for the tick?
 	ld	a,(IR_Group0)
-	cmp	a,#GroupNumTotal.n0
+	cmp	a,#WarningNumTotal.n0
 	ld	a,(IR_Group1)
-	sbc	a,#GroupNumTotal.n1
+	sbc	a,#WarningNumTotal.n1
 	jc	SendPkt_NoWrap
+	jmp	SendPkt_EndGroup
+
+SendPkt_Xgroup:
+	; Have we finished the set of fast and slow packets for the explosion?
+	ld	a,(IR_Group0)
+	cmp	a,#ExplodeNumTotal.n0
+	ld	a,(IR_Group1)
+	sbc	a,#ExplodeNumTotal.n1
+	jc	SendPkt_NoWrap
+SendPkt_EndGroup:
+	; End of this group.
 	; Start the next set of packets - but only when the logic say so
 	ld	a,#0
 	ld	(IR_Group0),a
 	ld	(IR_Group1),a
 	ld	(g_trigger),a ; No update yet
 SendPkt_NoWrap:
-	
-	; Count up for sleep mode
-	; The numbers behind this logic are kind of orphaned since we will not naturally go to sleep
-	; But the logic will force us to sleep (after the grenade explodes) by changing this value
-	inc	(Tim_SleepCount0)
-	adr	(Tim_SleepCount1)
-	adr	(Tim_SleepCount2)
-	adr	(Tim_SleepCount3)
 	
 	; Look at grenade logic for changing the payload
 	ld	a,#OUTPUT_POWER ; full power
@@ -891,30 +903,14 @@ Chk_Halt_Tim_Prc:
 	ldpch	Chk_Halt_Tim_RP
 	jmp	Chk_Halt_Tim_RP
 #endif
-	; Compare the 16 bit sleep mode counter with sleep
-	clr	c
-	ld	a,(Tim_SleepCount0)
-	cmp	a,#TIME_SLEEP.n0
-	ld	a,(Tim_SleepCount1)
-	sbc	a,#TIME_SLEEP.n1
-	ld	a,(Tim_SleepCount2)
-	sbc	a,#TIME_SLEEP.n2
-	ld	a,(Tim_SleepCount3)
-	sbc	a,#TIME_SLEEP.n3
+	ld	a,(g_poweroff)
 	ldpch	Chk_Halt_Tim_End
-	jc	Chk_Halt_Tim_End
+	jz	Chk_Halt_Tim_End
 
 	; OK now we want to turn off the power
 	clr	#1,(SYS0) ; Clear ENINT and disable interrupts
 	nop
 	
-	; Reset the sleep mode counter
-	ld	a,#0
-	ld	(Tim_SleepCount0),a
-	ld	(Tim_SleepCount1),a
-	ld	(Tim_SleepCount2),a
-	ld	(Tim_SleepCount3),a
-
 	; Turn ON the visible LED and infrared LED, to draw down the capacitor
 	set	#2,(RTC)        ; PA1 no output infrared beam
 #ifdef BOARD_STEPHEN
@@ -1617,28 +1613,22 @@ gup_0:
 ; ----------------------------------------------------------------------------
 ; Update the grenade logic
 Grenade_update_logic:
-	ld a,(g_state)
-	cmp a,#state_unarmed
-	jnz gul_notunarmed
-	ld a,(PORT_PWR_BTN)
+	ld	a,(g_state)
+	cmp	a,#state_unarmed
+	jnz	gul_notunarmed
+
+	; We are unarmed. Has the user pressed the button?
+	ld	a,(PORT_PWR_BTN)
 BIT_PWR_BTN	equ	1<<PIN_PWR_BTN
-	and a,#BIT_PWR_BTN ; PD0 = user button
-	jz Grenade_Arm
-#ifdef BOARD_STEPHEN
-	jmp Grenade_Arm ; Since PD0 does not work, arm on bootup
-#endif
-#ifdef BOARD_DEVELOP
-	jmp Grenade_Arm ; For testing, arm on bootup
-#endif
-#ifdef BOARD_8LEDS
-	jmp Grenade_Arm ; For testing, arm on bootup
-#endif
+	and	a,#BIT_PWR_BTN ; PD0 = user button
+	jz	Grenade_Arm
+
+	jmp	Grenade_Arm ; For testing, arm on bootup
 	rets
 
 gul_notunarmed:
-	cmp a,#state_explode
-	jz gul_explode
-
+	cmp	a,#state_explode
+	jz	gul_explode
 
 	; Normal state
 	ld	a,(g_timer0)
@@ -1654,29 +1644,17 @@ gul_notunarmed:
 
 ; We have had a 100ms tick in the normal grenade state
 gul_tick:
-	clr	c
-	ld	a,(g_timer0)
-	sbc	a,#TIME_TICK.n0
+	ld	a,#0
 	ld	(g_timer0),a
-	ld	a,(g_timer1)
-	sbc	a,#TIME_TICK.n1
 	ld	(g_timer1),a
-	ld	a,(g_timer2)
-	sbc	a,#TIME_TICK.n2
 	ld	(g_timer2),a
-	ld	a,(g_timer3)
-	sbc	a,#TIME_TICK.n3
 	ld	(g_timer3),a
-	inc	(g_substate0)
-	adr	(g_substate1)
 
 	ld	a,(g_substate0)
-	and	a,#1
-	jz	gul_notick
-	rets
-
-; Every 200ms (second tick), send something
-gul_notick:
+	or	a,(g_substate0)
+	jnz	gul_notfirst
+	
+	; When we go into this state, send a group of packets
 	ld	a,#1100b
 	ld	(Mcu_ID3),a
 	ld	a,#1001b
@@ -1689,8 +1667,13 @@ State1diff	equ	state_1-1 ; assembler is rubbish with in-place arithmetic
 	ld	(Mcu_ID0),a
 	inc	(g_update) ; Allow new packet to be sent
 
+gul_notfirst:
+	; Go through the substates
+	inc	(g_substate0)
+	adr	(g_substate1)
+	
 	ld	a,(g_substate0)
-	cmp	a,#COUNT_TICK	; Assume it is even!
+	cmp	a,#COUNT_TICK	
 	jnz	gul_not_next_state
 	; Go to the next state
 	dec	(g_state)
@@ -1712,27 +1695,21 @@ gul_explode:
 	ld	a,(g_timer3)
 	sbc	a,#TIME_EXPLODE.n3
 	jc	gul_boom
+	; Else do nothing
 	rets
 	
 gul_boom:
-	clr	c
-	ld	a,(g_timer0)
-	sbc	a,#TIME_EXPLODE.n0
+	ld	a,#0
 	ld	(g_timer0),a
-	ld	a,(g_timer1)
-	sbc	a,#TIME_EXPLODE.n1
 	ld	(g_timer1),a
-	ld	a,(g_timer2)
-	sbc	a,#TIME_EXPLODE.n2
 	ld	(g_timer2),a
-	ld	a,(g_timer3)
-	sbc	a,#TIME_EXPLODE.n3
 	ld	(g_timer3),a
 
-	inc	(g_substate0)
-	adr	(g_substate1)
+	ld	a,(g_substate0)
+	or	a,(g_substate0)
+	jnz	gul_notbang
 
-	; 10 times per second send the explosion event
+	; Send the explosion event
 	ld	a,#1100b
 	ld	(Mcu_ID3),a
 	ld	a,#1001b
@@ -1742,7 +1719,11 @@ gul_boom:
 	ld	a,#0000b
 	ld	(Mcu_ID0),a
 	inc	(g_update)
-	
+
+gul_notbang:
+	inc	(g_substate0)
+	adr	(g_substate1)
+
 	; Are we done?
 	ld	a,(g_substate0)
 	cmp	a,#COUNT_EXPLODE.n0
@@ -1759,13 +1740,9 @@ gul_done:
 	ld	(g_substate0),a
 	ld	(g_substate1),a
 
-	; Force sleep mode
-	ld	a,#15
-	ld	(Tim_SleepCount3),a
-	ld	a,#0
-	ld	(Tim_SleepCount2),a
-	ld	(Tim_SleepCount1),a
-	ld	(Tim_SleepCount0),a
+	; Force power off
+	ld	a,#1
+	ld	(g_poweroff),a
 	rets
 
 ; ----------------------------------------------------------------------------
