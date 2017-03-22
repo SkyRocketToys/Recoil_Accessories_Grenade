@@ -105,6 +105,10 @@ OUTPUT_POWER	equ	0
 OUTPUT_POWER	equ	3
 #endif
 
+; Infrared modulation (fixed by the CPU)
+PORT_MOD	equ	DATA_PA
+PIN_MOD		equ	1
+
 ; Visible LED (same on all boards)
 PORT_LED	equ	DATA_PA
 PIN_LED		equ	2

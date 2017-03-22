@@ -855,7 +855,7 @@ SendPkt_EndGroup:
 	ld	a,#0
 	ld	(IR_Group0),a
 	ld	(IR_Group1),a
-	ld	(g_trigger),a ; No update yet
+	ld	(g_trigger),a
 SendPkt_NoWrap:
 	
 	; Look at grenade logic for changing the payload
@@ -1272,12 +1272,12 @@ PODY_IO_Init:
 #endif
 #ifdef BOARD_8LEDS
 	; Pin A0  EN_     (active high) = output low
-	; Pin A1  MOD_OUT (active high) = output low but PWM high on firing
+	; Pin A1  MOD_OUT (active high) = output high but PWM high on firing
 	; Pin A2  LED     (active low)  = output low
 	; Pin A3  PWD_BTN (active low)  = input (pull up) no wakeup
 	ld	a,#0111b
 	ld	(IOC_PA),a	; Port A direction (0=input/1=output)
-	ld	a,#1000b
+	ld	a,#1010b
 	ld	(data_pa),a	; Port A data (0=low/1=high)
 	ld	a,#0000b
 	ld	exio(pawk),a	; Port A wakeup - none
@@ -1394,59 +1394,59 @@ Timr2_Init_End:
 
 ; ----------------------------------------------------------------------------
 Grenade_init_logic:
-	ld a,#0
-	ld (g_timer0),a
-	ld (g_timer1),a
-	ld (g_timer2),a
-	ld (g_timer3),a
-	ld (g_substate0),a
-	ld (g_substate1),a
-	ld (g_state),a
-	ld (g_trigger),a
-	ld (g_update),a
+	ld	a,#0
+	ld	(g_timer0),a
+	ld	(g_timer1),a
+	ld	(g_timer2),a
+	ld	(g_timer3),a
+	ld	(g_substate0),a
+	ld	(g_substate1),a
+	ld	(g_state),a
+	ld	(g_trigger),a
+	ld	(g_update),a
 	rets
 
 ; ----------------------------------------------------------------------------
 Grenade_arm:
-	ld a,#state_10
-	ld (g_state),A
-	ld a,#state_10
-	ld (g_state),a
-	ld a,#0
-	ld (g_timer0),a
-	ld (g_timer1),a
-	ld (g_timer2),a
-	ld (g_timer3),a
-	ld (g_substate0),a
-	ld (g_substate1),a
+	ld	a,#state_10
+	ld	(g_state),A
+	ld	a,#state_10
+	ld	(g_state),a
+	ld	a,#0
+	ld	(g_timer0),a
+	ld	(g_timer1),a
+	ld	(g_timer2),a
+	ld	(g_timer3),a
+	ld	(g_substate0),a
+	ld	(g_substate1),a
 	rets
 
 ; ----------------------------------------------------------------------------
 ; Code to update the grenade visible LED (PA2)
 Grenade_update_visible:
-	ld a,(g_state)
-	cmp a,#state_unarmed
-	jz gvis_off
-	cmp a,#state_explode
-	jnz gvis_notexp
+	ld	a,(g_state)
+	cmp	a,#state_unarmed
+	jz	gvis_off
+	cmp	a,#state_explode
+	jnz	gvis_notexp
 	; Explosion
-	ld a,(g_substate0)
-	and a,#1
-	jz gvis_off
-	jmp gvis_on
+	ld	a,(g_substate0)
+	and	a,#1
+	jz	gvis_off
+	jmp	gvis_on
 
 gvis_notexp:
 	; Countdown
-	ld a,(g_substate0)
-	cmp a,#0
-	jz gvis_off
+	ld	a,(g_substate0)
+	cmp	a,#0
+	jz	gvis_off
 
 gvis_on:
-	clr #PIN_LED,(PORT_LED)
+	clr	#PIN_LED,(PORT_LED)
 	rets
 
 gvis_off:
-	set #PIN_LED,(PORT_LED)
+	set	#PIN_LED,(PORT_LED)
 	rets
 
 
@@ -1455,7 +1455,12 @@ gvis_off:
 ; (Stephen) PA0=EN_LED1, PB3=EN_LED2, PD3=EN_LED3, PD2=EN_LED4
 ; (Develop) PB0, PB1, PB2 = address of LEDs (0..7)
 ; (8LEDS)   PD1, PD0, PB2, PB1, PB3, PD2, PA0, PD3 = EN_LED (1..8)
+; If there is no packet wanted, turn them all off
 Grenade_update_outi:
+	ld	a,(g_update)
+	or	a,(g_trigger)
+	jz	gou_off
+
 	inc	(g_outi)
 	ld	a,(g_outi)
 	and	a,#ADDRESS_MASK
@@ -1467,21 +1472,28 @@ Grenade_update_outi:
 	cmp	a,#2
 	jz	gou_2
 gou_3:
-	set	#PIN_EN4,(PORT_EN4)
 	clr	#PIN_EN3,(PORT_EN3)
+	set	#PIN_EN4,(PORT_EN4)
 	rets
 gou_2:
-	set	#PIN_EN3,(PORT_EN3)
 	clr	#PIN_EN2,(PORT_EN2)
+	set	#PIN_EN3,(PORT_EN3)
 	rets
 gou_1:
-	set	#PIN_EN2,(PORT_EN2)
 	clr	#PIN_EN1,(PORT_EN1)
+	set	#PIN_EN2,(PORT_EN2)
 	rets
 gou_0:
+	clr	#PIN_EN4,(PORT_EN4)
 	set	#PIN_EN1,(PORT_EN1)
+	rets
+gou_off:
+	clr	#PIN_EN1,(PORT_EN1)
+	clr	#PIN_EN2,(PORT_EN2)
+	clr	#PIN_EN3,(PORT_EN3)
 	clr	#PIN_EN4,(PORT_EN4)
 #endif
+
 #ifdef BOARD_DEVELOP
 	and	a,#MASK_ENBITS
 	ld	(g_tmp),a
@@ -1491,6 +1503,7 @@ NOTMASK_ENBITS	equ	15-MASK_ENBITS
 	or	a,(g_tmp)
 	ld	(PORT_ENBITS),a
 #endif
+
 #ifdef BOARD_8LEDS
 	and	a,#7
 	jz	gou_0
@@ -1507,36 +1520,48 @@ NOTMASK_ENBITS	equ	15-MASK_ENBITS
 	cmp	a,#6
 	jz	gou_6
 gou_7:
-	set	#PIN_EN8,(PORT_EN8)
 	clr	#PIN_EN7,(PORT_EN7)
+	set	#PIN_EN8,(PORT_EN8)
 	rets
 gou_6:
-	set	#PIN_EN7,(PORT_EN7)
 	clr	#PIN_EN6,(PORT_EN6)
+	set	#PIN_EN7,(PORT_EN7)
 	rets
 gou_5:
-	set	#PIN_EN6,(PORT_EN6)
 	clr	#PIN_EN5,(PORT_EN5)
+	set	#PIN_EN6,(PORT_EN6)
 	rets
 gou_4:
-	set	#PIN_EN5,(PORT_EN5)
 	clr	#PIN_EN4,(PORT_EN4)
+	set	#PIN_EN5,(PORT_EN5)
 	rets
 gou_3:
-	set	#PIN_EN4,(PORT_EN4)
 	clr	#PIN_EN3,(PORT_EN3)
+	set	#PIN_EN4,(PORT_EN4)
 	rets
 gou_2:
-	set	#PIN_EN3,(PORT_EN3)
 	clr	#PIN_EN2,(PORT_EN2)
+	set	#PIN_EN3,(PORT_EN3)
 	rets
 gou_1:
-	set	#PIN_EN2,(PORT_EN2)
 	clr	#PIN_EN1,(PORT_EN1)
+	set	#PIN_EN2,(PORT_EN2)
 	rets
 gou_0:
-	set	#PIN_EN1,(PORT_EN1)
 	clr	#PIN_EN8,(PORT_EN8)
+	set	#PIN_EN1,(PORT_EN1)
+	rets
+gou_off:
+	clr	#PIN_EN1,(PORT_EN1)
+	clr	#PIN_EN2,(PORT_EN2)
+	clr	#PIN_EN3,(PORT_EN3)
+	clr	#PIN_EN4,(PORT_EN4)
+	clr	#PIN_EN5,(PORT_EN5)
+	clr	#PIN_EN6,(PORT_EN6)
+	clr	#PIN_EN7,(PORT_EN7)
+	clr	#PIN_EN8,(PORT_EN8)
+	ld	a,#ADDRESS_MASK
+	ld	(g_outi),A
 #endif
 	rets
 
