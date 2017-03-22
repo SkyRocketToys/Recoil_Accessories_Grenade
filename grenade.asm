@@ -1438,6 +1438,7 @@ Grenade_update_visible:
 gvis_notexp:
 	; Countdown
 	ld	a,(g_substate0)
+	or	a,(g_substate1)
 	cmp	a,#0
 	jz	gvis_off
 
@@ -1676,7 +1677,7 @@ gul_tick:
 	ld	(g_timer3),a
 
 	ld	a,(g_substate0)
-	or	a,(g_substate0)
+	or	a,(g_substate1)
 	jnz	gul_notfirst
 	
 	; When we go into this state, send a group of packets
@@ -1731,7 +1732,7 @@ gul_boom:
 	ld	(g_timer3),a
 
 	ld	a,(g_substate0)
-	or	a,(g_substate0)
+	or	a,(g_substate1)
 	jnz	gul_notbang
 
 	; Send the explosion event
