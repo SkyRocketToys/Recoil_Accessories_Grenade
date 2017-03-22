@@ -832,7 +832,7 @@ SendPkt_Trigger:
 	; Are we in the explosion state?
 	ld	a,(g_state)
 	cmp	a,#state_explode
-	jnz	SendPkt_Xgroup
+	jz	SendPkt_Xgroup
 
 	; Have we finished the set of fast packets for the tick?
 	ld	a,(IR_Group0)
