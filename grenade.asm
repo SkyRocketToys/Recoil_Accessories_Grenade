@@ -543,32 +543,27 @@ INT_End_NoInc:
 ; -----------------------------------------------------------------------------
 ; MAIN PROGRAM entry point
 PGMSRT:
-ERR_PC_ADR:
-PGM_Delay:
+;ERR_PC_ADR:
+;PGM_Delay:
 	ld	A,#0
 	ld	(SYS0),A	; Disable interrupts
 	ld	(USER1),A	; This nybble could be used by user code (and is)
 	ld	(USER2),A	; This nybble could be used by user code (but isn't)
-	; Initialise input/output 
+	; Initialise input/output (in powered down state)
 	ldpch	PODY_IO_Init
 	call	PODY_IO_Init
 	
-	; Power-up
-
 	; Delay loop (uses SRAM before it is cleared)
-	; Should be 11*0xD0000/2 = about 0.585 seconds
+	; Should be 11 cycles * (0x100000-0xF5000) / 2 Mhz = about 0.25 seconds
 	ldmah	#0
 	ld	A,#0
 	ld	(20H),A
 	ld	(21H),A
 	ld	(22H),A
+	ld	A,#05H ; Short delay
 	ld	(23H),A
-#ifdef SPECIAL_SIMON
-	ld	A,#08h ; Longer delay
-#else
-	ld	A,#0DH ; Short delay
-#endif
-	ld	(24H),A ; 20 bit timer 0xD0000
+	ld	A,#0FH ; Short delay
+	ld	(24H),A ; 20 bit timer 0xF5000
 DELAY1:
 	ld	A,#05H
 	ld	(WDT),A ; Kick the watchdog
@@ -586,6 +581,43 @@ DELAY1:
 	; Initialise input/output again
 	ldpch	PODY_IO_Init
 	call	PODY_IO_Init
+
+	; Power up
+	set	#PIN_PWR_EN,(PORT_PWR_EN)
+	
+	; Lets ensure these are cleared
+	ld	A,#0
+	ld	(SYS0),A	; Disable interrupts
+	ld	(USER1),A	; This nybble could be used by user code (and is)
+	ld	(USER2),A	; This nybble could be used by user code (but isn't)
+	
+	; Delay loop (uses SRAM before it is cleared)
+	; Should be 11 cycles * (0x100000-0xE0000) / 2 Mhz = about 0.72 seconds
+	ldmah	#0
+	ld	A,#0
+	ld	(20H),A
+	ld	(21H),A
+	ld	(22H),A
+	ld	(23H),A
+#ifdef SPECIAL_SIMON
+	ld	A,#09h ; Longer delay
+#else
+	ld	A,#0EH ; Short delay
+#endif
+	ld	(24H),A ; 20 bit timer 0xD0000
+DELAY2:
+	ld	A,#05H
+	ld	(WDT),A ; Kick the watchdog
+
+	ld	A,(20H)
+	clr	C
+	adc	A,#2
+	ld	(20H),A
+	adr	(21H)
+	adr	(22H)
+	adr	(23H)
+	adr	(24H)
+	jnc	DELAY2
 
 	; Clear Banks 0..3 of SRAM
 	ldmah	#3
@@ -856,6 +888,11 @@ Chk_Halt_Tim_Prc:
 	sbc	a,#TIME_SLEEP.n3
 	ldpch	Chk_Halt_Tim_End
 	jc	Chk_Halt_Tim_End
+
+	; OK now we want to turn off the power
+	clr	#1,(SYS0) ; Clear ENINT and disable interrupts
+	nop
+	
 	; Reset the sleep mode counter
 	ld	a,#0
 	ld	(Tim_SleepCount0),a
@@ -863,8 +900,8 @@ Chk_Halt_Tim_Prc:
 	ld	(Tim_SleepCount2),a
 	ld	(Tim_SleepCount3),a
 
-	; Turn off the visible LED and infrared LED
-	clr	#2,(RTC)        ; PA1 no output infrared beam
+	; Turn ON the visible LED and infrared LED, to draw down the capacitor
+	set	#2,(RTC)        ; PA1 no output infrared beam
 #ifdef BOARD_STEPHEN
 	ld	a,#1000b
 	ld	(data_pa),a	; Port A data (0=low/1=high)
@@ -884,14 +921,14 @@ Chk_Halt_Tim_Prc:
 #ifdef BOARD_8LEDS
 	; Important pins: PB0 = 0 (power off)
 	; PA2 = 0 (LED on to draw some current)
-	ld	a,#1000b
+	; PD1 = 1 (IR LED on to draw some current)
+	ld	a,#1010b
 	ld	(data_pa),a	; Port A data (0=low/1=high)
 	ld	a,#0000b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
-	ld	a,#0000b
+	ld	a,#0010b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 #endif
-	clr	#1,(SYS0) ; Clear ENINT and disable interrupts
 	nop
 PowerOffLoop:
 	nop
@@ -1238,13 +1275,13 @@ PODY_IO_Init:
 	ld	a,#0000b
 	ld	exio(papl),a	; Port A pull down 100kOhm resistor
 
-	; Pin B0  PWR_EN  (active high) = output high
+	; Pin B0  PWR_EN  (active high) = output LOW (needs to be high soon)
 	; Pin B1  EN_     (active high) = output low
 	; Pin B2  EN_     (active high) = output low
 	; Pin B3  EN_     (active high) = output low
 	ld	a,#1111b
 	ld	(IOC_PB),a	; Port B dir (0=input/1=output)
-	ld	a,#0001b
+	ld	a,#0000b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
 	ld	a,#0000b
 	ld	exio(pbwk),a	; Port B wakeup
