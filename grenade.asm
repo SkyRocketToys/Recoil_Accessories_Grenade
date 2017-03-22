@@ -82,9 +82,9 @@ state_9	equ 10
 state_10	equ 12
 
 TIME_TICK     equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
-TIME_EXPLODE  equ 100*25/2 ; Size of explosion ticks in ms->interrupt units
-COUNT_EXPLODE equ 20 ; Number of explosion ticks before going to sleep
-COUNT_TICK    equ 10 ; Number of update ticks before going to next state (assumed to be even)
+TIME_EXPLODE  equ 100*25/2 ; Size of explosion ticks in ms->interrupt units (assumed to be <=65535)
+COUNT_EXPLODE equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
+COUNT_TICK    equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
 
 #ifdef SPECIAL_SIMON
 ADDRESS_MASK	equ	0
@@ -174,6 +174,7 @@ CRC_DATA3      ; ^
 
 ; Grenade logic variables
 g_update       ; true when we want to update the output packet (Mcu_ID0 has changed)
+g_trigger      ; true when we want to trigger a group of packets
 g_timer0       ; Increments every 80us
 g_timer1
 g_timer2
@@ -765,11 +766,23 @@ SYS_Check_Prc:
 ; Main loop task 2/3
 ; Check for the packet trigger events (30ms / 100ms), i.e. that a new packet should be triggered
 Tim_SendPkt_Chk_Prc:
+	; Update the logic to see if we want to trigger off a group
+	ldpch	Grenade_update_logic
+	call	Grenade_update_logic
+
+	; Are we wanting to transmit now?
+	ld	a,(g_update)
+	or	a,(g_trigger)
+	ldpch	Tim_SendPkt_Chk_RP 
+	jz	Tim_SendPkt_Chk_RP
+
+	; OK we want to be sending packets now
 	; Are we in fast packet mode or slow packet mode
 	ld	a,(IR_Group0)
 	cmp	a,#GroupNumFast.n0
 	ld	a,(IR_Group1)
 	sbc	a,#GroupNumFast.n1
+	ldpch	SendPkt_TestFast
 	jc	SendPkt_TestFast
 
 	; Test timing for slow packets
@@ -784,7 +797,7 @@ Tim_SendPkt_Chk_Prc:
 	
 	ldpch	Tim_SendPkt_Chk_RP 
 	jc	Tim_SendPkt_Chk_RP
-	jmp SendPkt_Trigger
+	jmp 	SendPkt_Trigger
 
 SendPkt_TestFast:
 	; Test timing for fast packets
@@ -818,13 +831,16 @@ SendPkt_Trigger:
 	ld	a,(IR_Group1)
 	sbc	a,#GroupNumTotal.n1
 	jc	SendPkt_NoWrap
-	; Start the next set of packets
+	; Start the next set of packets - but only when the logic say so
 	ld	a,#0
 	ld	(IR_Group0),a
 	ld	(IR_Group1),a
+	ld	(g_trigger),a ; No update yet
 SendPkt_NoWrap:
 	
 	; Count up for sleep mode
+	; The numbers behind this logic are kind of orphaned since we will not naturally go to sleep
+	; But the logic will force us to sleep (after the grenade explodes) by changing this value
 	inc	(Tim_SleepCount0)
 	adr	(Tim_SleepCount1)
 	adr	(Tim_SleepCount2)
@@ -838,12 +854,11 @@ SendPkt_NoWrap:
 	call	Grenade_update_outi
 	ldpch	Grenade_update_visible
 	call	Grenade_update_visible
-	ldpch	Grenade_update_logic
-	call	Grenade_update_logic
 	
 	ld	a,(g_update)
 	jz	spk_same
 	dec	(g_update)
+	inc	(g_trigger)
 	ldpch	CRC_Chk_Code
 	call	CRC_Chk_Code
 spk_same:
@@ -1391,6 +1406,8 @@ Grenade_init_logic:
 	ld (g_substate0),a
 	ld (g_substate1),a
 	ld (g_state),a
+	ld (g_trigger),a
+	ld (g_update),a
 	rets
 
 ; ----------------------------------------------------------------------------

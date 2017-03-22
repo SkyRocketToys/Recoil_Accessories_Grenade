@@ -151,7 +151,7 @@ C_InitVal	equ 0    ; CRC initial value
 CRC_DataCnt     equ 16   ; Number of bits in the CRC (1..16 valid)
 
 ; Parameters for the group calculation
-GroupNumFast	equ 30   ; Number of fast packets
+GroupNumFast	equ 14   ; Number of fast packets
 GroupNumSlow	equ 2    ; Number of slow packets
 ; Generated parameters
 GroupNumTotal	equ GroupNumSlow+GroupNumFast
