@@ -24,6 +24,10 @@
 ;   RTC = Unused (1 second)
 ; 
 ; *****************************************************************************
+; Notes about assembly language
+;   jc = jump if less than
+;   jnc = jump if greater or equal
+; *****************************************************************************
 
 ; -----------------------------------------------------------------------------
 ; Defines ONLY WORK if they are defined here rather than in the include files
@@ -147,7 +151,7 @@ Tim_SendPkt3   ; ^  SHARED between main thread and interrupt thread! Be careful!
 IR_Group0      ; 8 bit counter (incremented every packet) for checking fast vs slow packets
 IR_Group1      ; ^  For main thread
 
-IR_Start_Flag  ; NonZero = Do not touch infrared
+IR_Enable_Flag ; Zero = Do not touch infrared, One = allow infrared
 IR_Flag        ; Bit0=header pulse has been sent.
 	       ; Bit1=header gap has been sent
 	       ; Bit2=payload has been sent
@@ -171,7 +175,7 @@ CRC_DATA3      ; ^
 
 ; Grenade logic variables
 g_update       ; true when we want to update the output packet (Mcu_ID0 has changed)
-g_trigger      ; true when we want to trigger a group of packets
+g_send         ; true when we want to keep on sending a group of packets
 g_timer0       ; Increments every 80us
 g_timer1
 g_timer2
@@ -263,8 +267,8 @@ Tim2_Int_Prc:
 	adr	(g_timer3)
 
 	; Are we sending IR data?
-	ld	a,(IR_Start_Flag)
-	jnz	INT_End
+	ld	a,(IR_Enable_Flag)
+	jz	INT_End
 
 	; Where are we in the transmission?
 	inc	(IR_BaseTim0) ; Increment 8 bit timer
@@ -525,8 +529,8 @@ Ir_Last_data_Rx_Ok_Prc:
 #else
 	clr	#2,(RTC) ; PA1 no output infrared beam
 #endif
-	ld	A,#01
-	ld	(IR_Start_Flag),A
+	ld	A,#00
+	ld	(IR_Enable_Flag),A
 
 ; End of interrupt for timer2
 INT_End:
@@ -660,10 +664,11 @@ DELAY2:
 	ld	A,#Ram_chk_Dat.N1
 	ld	(SramChk1_IN),A 
 
-	; Set the group counter to be the start value
+	; Set the group counter to be the start value, but dont trigger it yet
 	ld	A,#0
 	ld	(IR_Group0),A
 	ld	(IR_Group1),A
+	ld	(IR_Enable_Flag),A
 
 ; -----------------------------------------------------------------------------
 ; Where wakeup code would return to
@@ -767,7 +772,7 @@ Tim_SendPkt_Chk_Prc:
 
 	; Are we wanting to transmit now?
 	ld	a,(g_update)
-	or	a,(g_trigger)
+	or	a,(g_send)
 	ldpch	Tim_SendPkt_Chk_RP 
 	jz	Tim_SendPkt_Chk_RP
 
@@ -822,8 +827,8 @@ SendPkt_Trigger:
 	jnz	SendPkt_TestAgain	; Redo the test! If the number went from 1FF to 200 during the test (because interrupt) we might think it was 2FF!
 	
 	; We can start triggering a new packet - stop current output
-	ld	a,#1 ; Disable messing with IR
-	ld	(IR_Start_Flag),a ; Should already be set though
+	ld	a,#0 ; Disable messing with IR
+	ld	(IR_Enable_Flag),a ; Should already be set though
 	
 	; Increment packet count within the group
 	inc	(IR_Group0)
@@ -855,9 +860,19 @@ SendPkt_EndGroup:
 	ld	a,#0
 	ld	(IR_Group0),a
 	ld	(IR_Group1),a
-	ld	(g_trigger),a
+	ld	(g_send),a
 SendPkt_NoWrap:
 	
+	ld	a,(g_update)
+	jz	spk_same
+	dec	(g_update)
+	inc	(g_send)
+	ldpch	CRC_Chk_Code
+	call	CRC_Chk_Code
+spk_same:
+	ldpch	Data_Int_Code
+	call	Data_Int_Code
+
 	; Look at grenade logic for changing the payload
 	ld	a,#OUTPUT_POWER ; full power
 	ldpch	Grenade_update_power
@@ -866,16 +881,9 @@ SendPkt_NoWrap:
 	call	Grenade_update_outi
 	ldpch	Grenade_update_visible
 	call	Grenade_update_visible
-	
-	ld	a,(g_update)
-	jz	spk_same
-	dec	(g_update)
-	inc	(g_trigger)
-	ldpch	CRC_Chk_Code
-	call	CRC_Chk_Code
-spk_same:
-	ldpch	Data_Int_Code
-	call	Data_Int_Code
+	ld	a,(g_send)
+	ldpch	Tim_SendPkt_Chk_RP
+	jz	Tim_SendPkt_Chk_RP
 
 	; Now it is safe to trigger the new packet
 	; Clear interrupts before resetting packet count to make it atomic
@@ -885,7 +893,8 @@ spk_same:
 	ld	(Tim_SendPkt1),a
 	ld	(Tim_SendPkt2),a
 	ld	(Tim_SendPkt3),a
-	ld	(IR_Start_Flag),a ; IR enabled
+	ld	a,#1
+	ld	(IR_Enable_Flag),a ; IR enabled
 	ld	a,#0
 	set	#1,(SYS0) ; Enable interrupts
 	nop	; paranoid
@@ -1402,7 +1411,7 @@ Grenade_init_logic:
 	ld	(g_substate0),a
 	ld	(g_substate1),a
 	ld	(g_state),a
-	ld	(g_trigger),a
+	ld	(g_send),a
 	ld	(g_update),a
 	ld	a,#ADDRESS_MASK
 	ld	(g_outi),A
@@ -1438,10 +1447,11 @@ Grenade_update_visible:
 	jmp	gvis_on
 
 gvis_notexp:
-	; Countdown
+	; In countdown phase
+	ld	a,(g_substate1)
+	jnz	gvis_on
 	ld	a,(g_substate0)
-	or	a,(g_substate1)
-	cmp	a,#0
+	cmp	a,#1
 	jz	gvis_off
 
 gvis_on:
@@ -1461,7 +1471,7 @@ gvis_off:
 ; If there is no packet wanted, turn them all off
 Grenade_update_outi:
 	ld	a,(g_update)
-	or	a,(g_trigger)
+	or	a,(g_send)
 	jz	gou_off
 
 	inc	(g_outi)
@@ -1694,8 +1704,8 @@ State1diff	equ	state_1-1 ; assembler is rubbish with in-place arithmetic
 	sbc	a,#State1diff
 	ld	(Mcu_ID0),a
 	inc	(g_update) ; Allow new packet to be sent
-
 gul_notfirst:
+
 	; Go through the substates
 	inc	(g_substate0)
 	adr	(g_substate1)
@@ -1722,7 +1732,7 @@ gul_explode:
 	sbc	a,#TIME_EXPLODE.n2
 	ld	a,(g_timer3)
 	sbc	a,#TIME_EXPLODE.n3
-	jc	gul_boom
+	jnc	gul_boom
 	; Else do nothing
 	rets
 	
@@ -1757,7 +1767,7 @@ gul_notbang:
 	cmp	a,#COUNT_EXPLODE.n0
 	ld	a,(g_substate1)
 	sbc	a,#COUNT_EXPLODE.n1
-	jc	gul_done
+	jnc	gul_done
 	rets
 
 gul_done:

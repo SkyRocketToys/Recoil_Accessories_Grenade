@@ -157,11 +157,11 @@ CRC_DataCnt     equ 16   ; Number of bits in the CRC (1..16 valid)
 WarningNumFast	equ 16   ; Number of fast packets
 WarningNumSlow	equ 0    ; Number of slow packets
 ; Generated parameters
-WarningNumTotal	equ WarningNumSlow+WarningNumFast
+WarningNumTotal	equ WarningNumSlow+WarningNumFast+1
 
 ; Parameters for the explode infrared packets
 ExplodeNumFast	equ 24   ; Number of fast packets
 ExplodeNumSlow	equ 8    ; Number of slow packets
 ; Generated parameters
-ExplodeNumTotal	equ ExplodeNumSlow+ExplodeNumFast
+ExplodeNumTotal	equ ExplodeNumSlow+ExplodeNumFast+1
 
