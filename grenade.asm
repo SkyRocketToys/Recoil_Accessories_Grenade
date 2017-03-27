@@ -1404,6 +1404,8 @@ Grenade_init_logic:
 	ld	(g_state),a
 	ld	(g_trigger),a
 	ld	(g_update),a
+	ld	a,#ADDRESS_MASK
+	ld	(g_outi),A
 	rets
 
 ; ----------------------------------------------------------------------------
@@ -1754,7 +1756,7 @@ gul_notbang:
 	ld	a,(g_substate0)
 	cmp	a,#COUNT_EXPLODE.n0
 	ld	a,(g_substate1)
-	cmp	a,#COUNT_EXPLODE.n1
+	sbc	a,#COUNT_EXPLODE.n1
 	jc	gul_done
 	rets
 
