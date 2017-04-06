@@ -20,7 +20,7 @@
 ;   CPU clock is osc/4 = 8MHz
 ;   Scaler2 = MCLK/8 = 1MHz
 ;   Timer1 = Unused
-;   Timer2 = 80uS for protocol output
+;   Timer2 = 100uS for protocol output
 ;   RTC = Unused (1 second)
 ; 
 ; *****************************************************************************
@@ -159,7 +159,7 @@ IR_Flag        ; Bit0=header pulse has been sent.
 IR_Num0        ; 8 bits: the number of payload bits that have been sent in this packet
 IR_Num1        ; ^ For interrupt thread
 
-IR_BaseTim0    ; 8 bit counter incremented every timer2 (80uS) "Do basic time waveform used"
+IR_BaseTim0    ; 8 bit counter incremented every timer2 (100uS) "Do basic time waveform used"
 IR_BaseTim1    ; ^ this is reset between phases (e.g. header, gap, each payload bit)
 IR_BIT_OK_FLAG ; True iff IR_Bit is valid. False if a new payload bit should be extracted from the packet.
 IR_Bit         ; The value of the current transmitting payload bit (0 or 1)
@@ -176,7 +176,7 @@ CRC_DATA3      ; ^
 ; Grenade logic variables
 g_update       ; true when we want to update the output packet (Mcu_ID0 has changed)
 g_send         ; true when we want to keep on sending a group of packets
-g_timer0       ; Increments every 80us
+g_timer0       ; Increments every 100us
 g_timer1
 g_timer2
 g_timer3
@@ -638,7 +638,7 @@ DELAY2:
 	ldpch	Clear_SRAM_INIT
 	call	Clear_SRAM_INIT
 
-	; Setup timer2 interrupt every 80uS
+	; Setup timer2 interrupt every 100uS
 	ldmah	#0
 	ldpch	Timer2_Init
 	call	Timer2_Init
@@ -1367,7 +1367,7 @@ Clear_SRAM_INIT:
 	rets
 	
 ; -----------------------------------------------------------------------------
-; Set up timer 2 for 80uS interrupt (12.5kHz) +/- 2%
+; Set up timer 2 for 100uS interrupt (12.5kHz) +/- 2%
 ; High speed oscillator HRCOSC = 32Mhz
 ; CPU clock FMCK = /4 = 8Mhz
 ; Scaler2 = Div8 = 1MHz
