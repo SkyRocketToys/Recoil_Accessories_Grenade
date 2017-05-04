@@ -197,6 +197,7 @@ IR_OnOff	equ USER1 ; set nonzero for on (copy to RTC register at next timer2 int
 Ram_chk_Dat     equ 5AH   ; Canary value for SRAM sanity checking
 VINT_MAH        equ 00    ; The SRAM bank we want to use inside the interrupt [Mind you, Optima overrides this]
 
+BIT_PWR_BTN	equ	1<<PIN_PWR_BTN
 
 ; -----------------------------------------------------------------------------
 ; PROGRAM Entry points
@@ -551,6 +552,7 @@ PGMSRT:
 	ld	(SYS0),A	; Disable interrupts
 	ld	(USER1),A	; This nybble could be used by user code (and is)
 	ld	(USER2),A	; This nybble could be used by user code (but isn't)
+
 	; Initialise input/output (in powered down state)
 	ldpch	PODY_IO_Init
 	call	PODY_IO_Init
@@ -572,7 +574,7 @@ DELAY1:
 
 	ld	A,(20H)
 	clr	C
-	adc	A,#2
+	adc	A,#1
 	ld	(20H),A
 	adr	(21H)
 	adr	(22H)
@@ -581,18 +583,17 @@ DELAY1:
 	jnc	DELAY1
 
 	; Initialise input/output again
-	ldpch	PODY_IO_Init
-	call	PODY_IO_Init
-
-	; Power up
-	set	#PIN_PWR_EN,(PORT_PWR_EN)
-	
-	; Lets ensure these are cleared
 	ld	A,#0
 	ld	(SYS0),A	; Disable interrupts
-	ld	(USER1),A	; This nybble could be used by user code (and is)
-	ld	(USER2),A	; This nybble could be used by user code (but isn't)
+	ldpch	PODY_IO_Init
+	call	PODY_IO_Init
 	
+	; Check that the button is pressed
+	ld	a,(PORT_PWR_BTN)
+	and	a,#BIT_PWR_BTN ; PD0 = user button
+	jz	SkipLongDelay
+
+
 	; Delay loop (uses SRAM before it is cleared)
 	; Should be 11 cycles * (0x100000-0xE0000) / 2 Mhz = about 0.72 seconds
 	ldmah	#0
@@ -604,7 +605,7 @@ DELAY1:
 #ifdef SPECIAL_SIMON
 	ld	A,#09h ; Longer delay
 #else
-	ld	A,#0EH ; Short delay
+	ld	A,#0DH ; Short delay
 #endif
 	ld	(24H),A ; 20 bit timer 0xD0000
 DELAY2:
@@ -620,6 +621,16 @@ DELAY2:
 	adr	(23H)
 	adr	(24H)
 	jnc	DELAY2
+SkipLongDelay:
+
+	; Lets ensure these are cleared
+	ld	A,#0
+	ld	(SYS0),A	; Disable interrupts
+	ld	(USER1),A	; This nybble could be used by user code (and is)
+	ld	(USER2),A	; This nybble could be used by user code (but isn't)
+	
+	; Power up
+	set	#PIN_PWR_EN,(PORT_PWR_EN)
 
 	; Clear Banks 0..3 of SRAM
 	ldmah	#3
@@ -1657,7 +1668,6 @@ Grenade_update_logic:
 
 	; We are unarmed. Has the user pressed the button?
 	ld	a,(PORT_PWR_BTN)
-BIT_PWR_BTN	equ	1<<PIN_PWR_BTN
 	and	a,#BIT_PWR_BTN ; PD0 = user button
 	jz	Grenade_Arm
 
