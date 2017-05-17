@@ -7,8 +7,8 @@
 ;     as TR4P153BT but supports ADC
 ; TR4P153BT = new hardware (grenade)
 ;     14 pins (11 input/output, 1 input, vcc, gnd)
-;     2048 instructions
-;     256 nybbles of RAM
+;     1536 instructions (12 bit words)
+;     256 nybbles of RAM (4 bit nybbles) in banks of 32 nybbles
 ;     2.2V to 5.5V
 ; For pinout and GPIO usage see pinout.inc
 ; For protocol timing see protocol.inc 
@@ -74,21 +74,25 @@
 ; grenade logic equates
 state_unarmed	equ 0
 state_explode	equ 1
-state_1	equ 2
-state_2	equ 3
-state_3	equ 4
-state_4	equ 5
-state_5	equ 6
-state_6	equ 7
-state_7	equ 8
-state_8	equ 9
-state_9	equ 10
-state_10	equ 12
+state_1		equ 2
+state_2		equ 3
+state_3		equ 4
+state_4		equ 5
+state_5		equ 6
+state_6		equ 7
+state_7		equ 8
+state_8		equ 9
+state_9		equ 10
+state_10	equ 11
+state_reserved	equ 12
+state_primed	equ 13
+state_priming	equ 14
+state_cancelled	equ 15
 
-TIME_TICK     equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
-TIME_EXPLODE  equ 100*25/2 ; Size of explosion ticks in ms->interrupt units (assumed to be <=65535)
-COUNT_EXPLODE equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
-COUNT_TICK    equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
+TIME_TICK	equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
+TIME_EXPLODE	equ 100*25/2 ; Size of explosion ticks in ms->interrupt units (assumed to be <=65535)
+COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
+COUNT_TICK	equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
 
 #ifdef SPECIAL_SIMON
 ADDRESS_MASK	equ	0
@@ -1444,20 +1448,62 @@ Grenade_arm:
 	rets
 
 ; ----------------------------------------------------------------------------
+Grenade_cancel:
+	ld	a,#state_cancelled
+	ld	(g_state),A
+	ld	a,#state_cancelled
+	ld	(g_state),a
+	ld	a,#0
+	ld	(g_timer0),a
+	ld	(g_timer1),a
+	ld	(g_timer2),a
+	ld	(g_timer3),a
+	ld	(g_substate0),a
+	ld	(g_substate1),a
+	rets
+
+; ----------------------------------------------------------------------------
 ; Code to update the grenade visible LED (PA2)
 Grenade_update_visible:
 	ld	a,(g_state)
 	cmp	a,#state_unarmed
 	jz	gvis_off
+	cmp	a,#state_cancelled
+	jz	gvis_off
+	cmp	a,#state_priming
+	jz	gvis_on
+	cmp	a,#state_primed
+	jz	gvis_on
 	cmp	a,#state_explode
-	jnz	gvis_notexp
+	jz	gvis_explode
+	
+	cmp	a,#state_1
+	jz	gvis_fast
+	cmp	a,#state_2
+	jz	gvis_fast
+	cmp	a,#state_3
+	jz	gvis_fast
+	cmp	a,#state_4
+	jz	gvis_fast
+	cmp	a,#state_5
+	jz	gvis_fast
+	jmp	gvis_slow
+	
+gvis_explode:	
 	; Explosion
 	ld	a,(g_substate0)
 	and	a,#1
 	jz	gvis_off
 	jmp	gvis_on
 
-gvis_notexp:
+gvis_fast:	
+	; Fast ticking
+	ld	a,(g_substate0)
+	and	a,#2
+	jz	gvis_off
+	jmp	gvis_on
+
+gvis_slow:
 	; In countdown phase
 	ld	a,(g_substate1)
 	jnz	gvis_on
