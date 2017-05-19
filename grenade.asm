@@ -678,8 +678,8 @@ SkipLongDelay:
 	call	SetWeapon
 
 	; Initialise the grenade logic
-	call	Grenade_init_logic
 	call	Grenade_init_button
+	call	Grenade_init_logic
 
 	; Create the CRC for the data packet
 	call	CRC_Chk_Code
@@ -1433,8 +1433,10 @@ Grenade_init_logic:
 	ld	(g_update),a
 	ld	a,#ADDRESS_MASK
 	ld	(g_outi),A
-	ld	A,#state_unarmed
-	jmp	Grenade_SetState
+	ld	a,(BtnNow)	; Has the user pressed the button?
+	jz	Grenade_Arm	; Not holding button down
+	jmp	Grenade_Prime	; Holding button down
+	
 
 ; ----------------------------------------------------------------------------
 ; Set the state to a new one
@@ -1791,7 +1793,7 @@ Grenade_update_logic:
 	jz	gul_explode
 
 ; -------------------------------------	
-
+; Countdown
 	; Cancelling? - on release
 	ld	a,(BtnNow)
 	jnz	gul_nocancel
@@ -1856,9 +1858,7 @@ gul_not_next_state:
 ; -------------------------------------	
 ; In the unarmed state
 gul_unarmed:
-	ld	a,(BtnNow)	; Has the user pressed the button?
-	jz	Grenade_Arm	; Not holding button down
-	jmp	Grenade_Prime	; Holding button down
+	rets	; Do nothing. So why are we not powered off?
 
 ; -------------------------------------	
 ; The grenade has been cancelled
@@ -1878,6 +1878,16 @@ gul_cancelled:
 gul_ctick:
 	inc	(g_substate0)
 	adr	(g_substate1)
+	
+	ld	a,(Weapon1)
+	ld	(Payload3),a
+	ld	a,(Weapon0)
+	ld	(Payload2),a
+	ld	a,(g_random)
+	ld	(Payload1),a
+	ld	a,(g_state)
+	ld	(Payload0),a
+	inc	(g_update) ; Allow new packet to be sent
 
 	; Are we done?
 	ld	a,(g_substate0)
@@ -1892,14 +1902,13 @@ gul_off:
 	; Force power off
 	ld	a,#1
 	ld	(g_poweroff),a
+	rets
 
 ; -------------------------------------	
 ; We are priming the grenade
 gul_priming:
 	inc	(g_random)	; Increment the value
-	jnz	gul_prz
-	inc	(g_random)	; Avoid zero
-gul_prz:
+	adr	(g_random)	; Avoid zero
 	ld	a,(BtnNow)
 	jz	Grenade_Primed
 
