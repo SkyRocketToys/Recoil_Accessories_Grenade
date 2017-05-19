@@ -1508,7 +1508,7 @@ gvis_priming:
 	; Priming
 	ld	a,(g_substate0)
 	and	a,#3
-	jz	gvis_on
+	jnz	gvis_on
 	jmp	gvis_off
 
 gvis_explode:	
@@ -1528,7 +1528,9 @@ gvis_faster:
 gvis_fast:	
 	; Fast ticking
 	ld	a,(g_substate0)
-	and	a,#3
+	cmp	a,#1
+	jz	gvis_off
+	cmp	a,#6
 	jz	gvis_off
 	jmp	gvis_on
 
@@ -1879,6 +1881,11 @@ gul_cancelled:
 	rets
 	
 gul_ctick:
+	ld	a,#0
+	ld	(g_timer0),a
+	ld	(g_timer1),a
+	ld	(g_timer2),a
+	ld	(g_timer3),a
 	inc	(g_substate0)
 	adr	(g_substate1)
 	
