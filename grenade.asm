@@ -1,7 +1,7 @@
 ; *****************************************************************************
 ; Recoil Gun Grenade code for SkyRocket Toys 2017
 ; Based on TR4K-IDE Demo Code by TRITAN Technology Inc.
-;
+; 
 ; Note that the TR4K-IDE uses 8 character tabs.
 ; TR4P153CT = new hardware (emulator, otp chips)
 ;     as TR4P153BT but supports ADC
@@ -963,6 +963,8 @@ PowerOffLoop:
 	nop
 	nop
 	jmp	PowerOffLoop
+	nop
+	
 	; Orphaned code = this used too little current so it did not drain the capacitor.
 	halt 
 Chk_Halt_Tim_End:
@@ -1443,6 +1445,7 @@ Grenade_init_logic:
 ; Input: A= new state
 Grenade_SetState:
 	ld	(g_state),A
+	nop
 	ld	(g_state),a
 	ld	a,#0
 	ld	(g_timer0),a
@@ -1483,7 +1486,7 @@ Grenade_update_visible:
 	cmp	a,#state_cancelled
 	jz	gvis_off
 	cmp	a,#state_priming
-	jz	gvis_fast
+	jz	gvis_priming
 	cmp	a,#state_primed
 	jz	gvis_on
 	cmp	a,#state_explode
@@ -1510,13 +1513,13 @@ gvis_priming:
 
 gvis_explode:	
 	; Explosion
-	ld	a,(g_substate0)
+	ld	a,(g_timer1)
 	and	a,#3
 	jz	gvis_off
 	jmp	gvis_on
 
 gvis_faster:
-	; Fast ticking
+	; Faster ticking
 	ld	a,(g_substate0)
 	and	a,#1
 	jz	gvis_off
@@ -1525,7 +1528,7 @@ gvis_faster:
 gvis_fast:	
 	; Fast ticking
 	ld	a,(g_substate0)
-	and	a,#2
+	and	a,#3
 	jz	gvis_off
 	jmp	gvis_on
 
@@ -1847,7 +1850,7 @@ gul_notfirst:
 	cmp	a,#COUNT_TICK	
 	jnz	gul_not_next_state
 	; Go to the next state
-	dec	(g_state)
+	inc	(g_state)
 	ld	a,#0
 	ld	(g_substate0),a
 	ld	(g_substate1),a
@@ -1930,13 +1933,15 @@ gul_priming_pkt:
 	ld	(g_timer1),a
 	ld	(g_timer2),a
 	ld	(g_timer3),a
+	inc	(g_substate0)	; For LED flashing
+	adr	(g_substate1)
 
 	; Send the priming event
 	ld	a,(Weapon1)
 	ld	(Payload3),a
 	ld	a,(Weapon0)
 	ld	(Payload2),a
-	ld	a,#0
+	ld	a,#0		; No random yet
 	ld	(Payload1),a
 	ld	a,(g_state)
 	ld	(Payload0),a
