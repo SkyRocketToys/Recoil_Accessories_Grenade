@@ -215,6 +215,7 @@ Weapon1         ; Goes to Payload3
 BtnTimer	; For spacing out the read (debouncing)
 BtnLast		; Last button was pressed? (active high)
 BtnNow		; Button is pressed? (active high)
+BtnSmooth	; Button value 0 (off) ... 15 (on) for debouncing the other variables
 }
 
 ; This is cached to reduce interrupt jitter on the infrared output enable
@@ -1746,12 +1747,17 @@ Grenade_init_button:
 	xor	a,#BIT_PWR_BTN
 	ld	(BtnLast),a
 	ld	(BtnNow),a
+	jz	gib_z
+	ld	a,#15	; "analog" value on for button (to support debouncing)
+gib_z:
+	ld	(BtnSmooth),a
 	ld	a,(g_timer1)
 	ld	(BtnTimer),a
 	rets
 	
 ; ----------------------------------------------------------------------------
-; Read the button
+; Read the button. Smooth the transitions high or low.
+; So it takes 25ms of the same value in order to change between high and low
 Grenade_read_button:
 	ld	a,(g_timer1)
 	cmp	a,(BtnTimer)
@@ -1761,9 +1767,34 @@ grb_new:
 	ld	(BtnTimer),a
 	ld	a,(BtnNow)
 	ld	(BtnLast),a
+	
+	; Read the new value of the button
 	ld	a,(PORT_PWR_BTN)
 	and	a,#BIT_PWR_BTN ; PD0 = user button
 	xor	a,#BIT_PWR_BTN
+	jz	grb_lower
+	; Increment the smooth value
+	ld	a,(BtnSmooth)
+	cmp	a,#15
+	jz	grb_on
+	inc	(BtnSmooth)
+	rets
+	
+grb_lower:
+	ld	a,(BtnSmooth)
+	jz	grb_off
+	dec	(BtnSmooth)
+	rets
+
+; The button is pressed
+grb_on:
+	ld	a,#BIT_PWR_BTN
+	ld	(BtnNow),a
+	rets
+
+; The button is released
+grb_off:
+	ld	a,#0
 	ld	(BtnNow),a
 	rets
 
