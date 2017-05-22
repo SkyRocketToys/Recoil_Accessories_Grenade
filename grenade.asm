@@ -791,6 +791,7 @@ Tim_SendPkt_Chk_Prc:
 	; Update the logic to see if we want to trigger off a group
 	call	Grenade_read_button
 	call	Grenade_update_logic
+	call	Grenade_update_visible
 
 	; Are we wanting to transmit now?
 	ld	a,(g_update)
@@ -893,7 +894,6 @@ spk_same:
 	ld	a,#OUTPUT_POWER ; full power
 	call	Grenade_update_power
 	call	Grenade_update_outi
-	call	Grenade_update_visible
 	ld	a,(g_send)
 	jz	Tim_SendPkt_Chk_RP
 
@@ -1527,6 +1527,8 @@ gvis_faster:
 
 gvis_fast:	
 	; Fast ticking
+	ld	a,(g_substate1)
+	jnz	gvis_on
 	ld	a,(g_substate0)
 	cmp	a,#1
 	jz	gvis_off
@@ -1541,6 +1543,7 @@ gvis_slow:
 	ld	a,(g_substate0)
 	cmp	a,#1
 	jz	gvis_off
+	; fall through
 
 gvis_on:
 	clr	#PIN_LED,(PORT_LED)
@@ -1781,8 +1784,8 @@ grb_new:
 ; 9	5	Cancel	4	Fast
 ; 10	4	Cancel	3	Fast
 ; 11	3	Cancel	2	Fast
-; 12	2	Cancel	1	Fast
-; 13	1	Cancel	Explode	Fast
+; 12	2	Cancel	1	Faster
+; 13	1	Cancel	Explode	Faster
 ; 14	Explode	X	Off	Solid
 ; 15	Rsrvd	X	X	X
 
