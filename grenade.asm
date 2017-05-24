@@ -87,12 +87,14 @@ state_3		equ 11
 state_2		equ 12
 state_1		equ 13
 state_explode	equ 14
-state_reserved	equ 15
+state_waiting	equ 15	; On start up, wait for a while to decide if priming or armed
 
 TIME_TICK	equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
 TIME_EXPLODE	equ 100*25/2 ; Size of explosion ticks in ms->interrupt units (assumed to be <=65535)
 TIME_CANCELLED	equ 100*25/2 ; Size of cancelled ticks in ms->interrupt units (assumed to be <=65535)
 TIME_PRIMING	equ 500*25/2 ; Size of priming ticks
+TIME_PRIMED	equ 500*25/2 ; Size of primed ticks (between sending out packets)
+TIME_WAITING	equ 750*25/2 ; Time to wait to see if priming or armed
 COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
 COUNT_TICK	equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
 COUNT_CANCELLED	equ 20 ; Number of cancelled ticks before going to sleep (assumed to be <=255)
@@ -1438,7 +1440,7 @@ Grenade_init_logic:
 	ld	(g_outi),A
 	ld	a,(BtnNow)	; Has the user pressed the button?
 	jz	Grenade_Arm	; Not holding button down
-	jmp	Grenade_Prime	; Holding button down
+	jmp	Grenade_Wait	; Holding button down
 	
 
 ; ----------------------------------------------------------------------------
@@ -1460,6 +1462,11 @@ Grenade_SetState:
 ; ----------------------------------------------------------------------------
 Grenade_Arm:
 	ld	a,#state_10
+	jmp	Grenade_SetState
+
+; ----------------------------------------------------------------------------
+Grenade_Wait:
+	ld	a,#state_waiting
 	jmp	Grenade_SetState
 
 ; ----------------------------------------------------------------------------
@@ -1486,6 +1493,8 @@ Grenade_update_visible:
 	jz	gvis_off
 	cmp	a,#state_cancelled
 	jz	gvis_off
+	cmp	a,#state_waiting
+	jz	gvis_on
 	cmp	a,#state_priming
 	jz	gvis_priming
 	cmp	a,#state_primed
@@ -1508,7 +1517,7 @@ Grenade_update_visible:
 gvis_priming:
 	; Priming
 	ld	a,(g_substate0)
-	and	a,#3
+	and	a,#1
 	jnz	gvis_on
 	jmp	gvis_off
 
@@ -1806,7 +1815,7 @@ grb_off:
 ; 0	Unarmed	X	X	X
 ; 1	Cancel	X	Off	Off
 ; 2	Priming	Primed	X	Fast
-; 3 	Primed	Cancel	10	Solid
+; 3 	Primed	10	X	Solid
 ; 4	10	Cancel	9	Slow
 ; 5	9	Cancel	8	Slow
 ; 6	8	Cancel	7	Slow
@@ -1818,7 +1827,7 @@ grb_off:
 ; 12	2	Cancel	1	Faster
 ; 13	1	Cancel	Explode	Faster
 ; 14	Explode	X	Off	Solid
-; 15	Rsrvd	X	X	X
+; 15	Waiting	10	Priming	On
 
 Grenade_update_logic:
 	ld	a,(g_state)
@@ -1826,8 +1835,12 @@ Grenade_update_logic:
 	jz	gul_unarmed
 	cmp	a,#state_cancelled
 	jz	gul_cancelled
+	cmp	a,#state_waiting
+	jz	gul_waiting
 	cmp	a,#state_priming
 	jz	gul_priming
+	cmp	a,#state_primed
+	jz	gul_primed
 	cmp	a,#state_explode
 	jz	gul_explode
 
@@ -1840,7 +1853,7 @@ Grenade_update_logic:
 	jnz	Grenade_Cancel	; Cancel the countdown
 gul_nocancel:
 
-	; Primed, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+	; 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
 
 	; Normal state
 	ld	a,(g_timer0)
@@ -1949,6 +1962,25 @@ gul_off:
 	rets
 
 ; -------------------------------------	
+; We are waiting to see if we will prime the grenade
+gul_waiting:
+	ld	a,(BtnNow)
+	jz	Grenade_Arm
+
+	ld	a,(g_timer0)
+	cmp	a,#TIME_WAITING.n0
+	ld	a,(g_timer1)
+	sbc	a,#TIME_WAITING.n1
+	ld	a,(g_timer2)
+	sbc	a,#TIME_WAITING.n2
+	ld	a,(g_timer3)
+	sbc	a,#TIME_WAITING.n3
+	jnc	Grenade_Prime
+	; Else do nothing
+	rets
+	
+
+; -------------------------------------	
 ; We are priming the grenade
 gul_priming:
 	inc	(g_random)	; Increment the value
@@ -1987,6 +2019,50 @@ gul_priming_pkt:
 	ld	a,(g_state)
 	ld	(Payload0),a
 	inc	(g_update)
+	rets
+
+; -------------------------------------	
+; We are in the primed state
+gul_primed:
+	; Arming? - on release
+	ld	a,(BtnNow)
+	jnz	gul_noarmp
+	ld	a,(BtnLast)
+	jnz	Grenade_Arm ; Arm the grenade
+gul_noarmp:
+
+	ld	a,(g_timer0)
+	cmp	a,#TIME_PRIMED.n0
+	ld	a,(g_timer1)
+	sbc	a,#TIME_PRIMED.n1
+	ld	a,(g_timer2)
+	sbc	a,#TIME_PRIMED.n2
+	ld	a,(g_timer3)
+	sbc	a,#TIME_PRIMED.n3
+	jnc	gul_primed_pkt
+	; Else do nothing
+	rets
+	
+gul_primed_pkt:
+	ld	a,#0
+	ld	(g_timer0),a
+	ld	(g_timer1),a
+	ld	(g_timer2),a
+	ld	(g_timer3),a
+	inc	(g_substate0)	; For LED flashing
+	adr	(g_substate1)
+
+	; Send the primed event
+	ld	a,(Weapon1)
+	ld	(Payload3),a
+	ld	a,(Weapon0)
+	ld	(Payload2),a
+	ld	a,(g_random)
+	ld	(Payload1),a
+	ld	a,(g_state)
+	ld	(Payload0),a
+	inc	(g_update) ; Allow new packet to be sent
+
 	rets
 
 ; -------------------------------------	
