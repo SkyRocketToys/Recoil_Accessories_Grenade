@@ -209,7 +209,7 @@ Mcu_ID1         ; ^
 Mcu_ID2         ; ^
 Mcu_ID3         ; ^
 
-; The processed payload (gggggg01) = mangled serial of chip + 01 for grenade
+; The processed payload (gggggg01) = mangled serial of chip + 11 for grenade
 Weapon0		; Goes to Payload2
 Weapon1         ; Goes to Payload3
 
@@ -1209,7 +1209,7 @@ SetWeapon:
 	adc	a,(Mcu_ID2)
 	adc	a,(Mcu_ID3)
 	and	a,#12
-	or	a,#1
+	or	a,#3
 	ld	(Weapon0),a
 	rets
 
