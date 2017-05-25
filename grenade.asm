@@ -92,9 +92,10 @@ state_waiting	equ 15	; On start up, wait for a while to decide if priming or arm
 TIME_TICK	equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
 TIME_EXPLODE	equ 100*25/2 ; Size of explosion ticks in ms->interrupt units (assumed to be <=65535)
 TIME_CANCELLED	equ 100*25/2 ; Size of cancelled ticks in ms->interrupt units (assumed to be <=65535)
-TIME_PRIMING	equ 500*25/2 ; Size of priming ticks
+TIME_PRIMING	equ  50*25/2 ; Size of priming ticks
 TIME_PRIMED	equ 500*25/2 ; Size of primed ticks (between sending out packets)
 TIME_WAITING	equ 750*25/2 ; Time to wait to see if priming or armed
+COUNT_PRIMING	equ 10 ; Number of priming ticks between packets (assumed to be even) (assumed to be <255)
 COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
 COUNT_TICK	equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
 COUNT_CANCELLED	equ 20 ; Number of cancelled ticks before going to sleep (assumed to be <=255)
@@ -1814,7 +1815,7 @@ grb_off:
 ; ----------    ----    ------- ---
 ; 0	Unarmed	X	X	X
 ; 1	Cancel	X	Off	Off
-; 2	Priming	Primed	X	Fast
+; 2	Priming	Primed	X	Faster
 ; 3 	Primed	10	X	Solid
 ; 4	10	Cancel	9	Slow
 ; 5	9	Cancel	8	Slow
@@ -2008,6 +2009,19 @@ gul_priming_pkt:
 	ld	(g_timer3),a
 	inc	(g_substate0)	; For LED flashing
 	adr	(g_substate1)
+
+	; Are we done?
+	ld	a,(g_substate0)
+	cmp	a,#COUNT_PRIMING.n0
+	ld	a,(g_substate1)
+	sbc	a,#COUNT_PRIMING.n1
+	jnc	gul_priming_send
+	rets
+	
+gul_priming_send:
+	ld	a,#0
+	ld	(g_substate0),a
+	ld	(g_substate1),a
 
 	; Send the priming event
 	ld	a,(Weapon1)
