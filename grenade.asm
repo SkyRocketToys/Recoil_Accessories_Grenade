@@ -99,6 +99,7 @@ COUNT_PRIMING	equ 10 ; Number of priming ticks between packets (assumed to be ev
 COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
 COUNT_TICK	equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
 COUNT_CANCELLED	equ 20 ; Number of cancelled ticks before going to sleep (assumed to be <=255)
+COUNT_PRIMED	equ  5 ; How long are we solid in the primed mode? (2 seconds)
 
 #ifdef SPECIAL_SIMON
 ADDRESS_MASK	equ	0
@@ -181,6 +182,7 @@ IR_Bit         ; The value of the current transmitting payload bit (0 or 1)
 LastTim1       ; Used for checking that multi nybble comparisons have not been invalidated
 ; (would be a bank boundary if this was handled manually)
 g_poweroff     ; Flag to turn the power off (no sleep mode in this project)
+g_quiet        ; In primed mode, this means we are quiet
 
 ; CRC variables (second bank)
 CRC_DATA0      ; Calculated 16 bit CRC input buffer
@@ -1477,6 +1479,8 @@ Grenade_Prime:
 
 ; ----------------------------------------------------------------------------
 Grenade_Primed:
+	ld	a,#0
+	ld	(g_quiet),A
 	ld	a,#state_primed
 	jmp	Grenade_SetState
 
@@ -1499,7 +1503,7 @@ Grenade_update_visible:
 	cmp	a,#state_priming
 	jz	gvis_priming
 	cmp	a,#state_primed
-	jz	gvis_on
+	jz	gvis_primed
 	cmp	a,#state_explode
 	jz	gvis_explode
 	
@@ -1520,6 +1524,12 @@ gvis_priming:
 	ld	a,(g_substate0)
 	and	a,#1
 	jnz	gvis_on
+	jmp	gvis_off
+	
+gvis_primed:
+	; Primed
+	ld	a,(g_quiet)
+	jz	gvis_on
 	jmp	gvis_off
 
 gvis_explode:	
@@ -1816,7 +1826,7 @@ grb_off:
 ; 0	Unarmed	X	X	X
 ; 1	Cancel	X	Off	Off
 ; 2	Priming	Primed	X	Faster
-; 3 	Primed	10	X	Solid
+; 3 	Primed	10	X	Solid and then off
 ; 4	10	Cancel	9	Slow
 ; 5	9	Cancel	8	Slow
 ; 6	8	Cancel	7	Slow
@@ -2056,16 +2066,32 @@ gul_noarmp:
 	jnc	gul_primed_pkt
 	; Else do nothing
 	rets
-	
+
+; We are in the quiet phase	
+gul_primed_quiet:
+	ld	a,#1
+	ld	(g_quiet),a
+	rets
+		
 gul_primed_pkt:
 	ld	a,#0
 	ld	(g_timer0),a
 	ld	(g_timer1),a
 	ld	(g_timer2),a
 	ld	(g_timer3),a
+	
+	ld	a,(g_quiet)
+	jnz	gul_primed_quiet
+	
 	inc	(g_substate0)	; For LED flashing
 	adr	(g_substate1)
 
+	ld	a,(g_substate0)
+	cmp	a,#COUNT_PRIMED.n0
+	ld	a,(g_substate1)
+	sbc	a,#COUNT_PRIMED.n1
+	jnc	gul_primed_quiet
+	
 	; Send the primed event
 	ld	a,(Weapon1)
 	ld	(Payload3),a
