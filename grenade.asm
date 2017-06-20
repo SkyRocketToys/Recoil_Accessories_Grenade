@@ -35,17 +35,24 @@
 ;  "BOARD_MARCH" fails to compile so we use "BOARD_8LEDS"
 ; -----------------------------------------------------------------------------
 
+; -----------------------------------------------------------------------------
 ; Define one of these boards.
 #define BOARD_8LEDS ; PCB with 8 single infrared LEDs on individual pins
 ;#define BOARD_STEPHEN ; Initial prototype board from stephen with 4 pairs of infrared LEDs
 ;#define BOARD_DEVELOP ; PCB with 8 single infrared LEDs on a 3 to 8 demuxer
 
+; -----------------------------------------------------------------------------
 ; Choose an appropriate protocol from protocol.inc, and its subdefines
 ; since the assembler does not get them correctly.
-#define PROTOCOL_MAN20A
-#define PROTOCOL_MAN
-#define PROTOCOL_20A
+;#define PROTOCOL_MAN20A
+;#define PROTOCOL_MAN
+;#define PROTOCOL_20A
 
+#define PROTOCOL_NEC12
+#define PROTOCOL_NEC
+#define PROTOCOL_12
+
+; -----------------------------------------------------------------------------
 #define USE_FIXED_SERIAL 0 ; Use a fixed serial number instead of unique serial number
 
 ; -----------------------------------------------------------------------------
@@ -56,6 +63,11 @@
 ; 4. long delay on reset (no 38khz output) 500ms+
 ; 5. do not go to sleep
 ;#define SPECIAL_SIMON 1
+
+; -----------------------------------------------------------------------------
+; Special sam demo for testing range
+; Keeps looping trigger
+#define SPECIAL_SAM 1
 
 ; -----------------------------------------------------------------------------
 ; Include Block
@@ -996,6 +1008,11 @@ CRC_Chk_Code:
 	and	a,#1	; 13 bits instead of 16
 #endif
 	ld	(CRC_DATA3),a
+#ifdef PROTOCOL_12
+	ld	a,#0
+	ld	(CRC_DATA2),a
+	ld	(CRC_DATA3),a
+#endif
 
 	; Setup the initial CRC value
 	ld	a,#C_InitVal.n0
@@ -1136,6 +1153,23 @@ Data_Int_Code:
 	ld	(IR_PktData1),a
 	ld	a,#0
 	ld	(IR_PktData2),a
+	ld	(IR_PktData3),a
+	ld	(IR_PktData4),a
+	ld	(IR_PktData5),a
+	ld	(IR_PktData6),a
+	ld	(IR_PktData7),a
+#endif
+#ifdef PROTOCOL_12
+	; 4 bits state, 4 bits id, 4 bits crc
+	ld	a,(Payload0)
+	ld	(IR_PktData0),a
+	ld	a,(Payload1)
+	ld	(IR_PktData1),a
+	ld	a,(IR_CRC_Buf0)
+	clr	c
+	adc	a,(IR_CRC_Buf1)
+	ld	(IR_PktData2),a
+	ld	a,#0
 	ld	(IR_PktData3),a
 	ld	(IR_PktData4),a
 	ld	(IR_PktData5),a
@@ -2156,15 +2190,22 @@ gul_notbang:
 
 gul_done:
 	; We have finished the explosion
+#ifdef SPECIAL_SAM
+	ld	a,#state_10
+#else
 	ld	a,#state_unarmed
+#endif
 	ld	(g_state),a
 	ld	a,#0
 	ld	(g_substate0),a
 	ld	(g_substate1),a
 
 	; Force power off
+#ifdef SPECIAL_SAM
+#else
 	ld	a,#1
 	ld	(g_poweroff),a
+#endif
 	rets
 
 ; ----------------------------------------------------------------------------

@@ -26,6 +26,9 @@
 ;   Manchester protocol
 ;       3.2mS header, 1.6mS header gap, start bit, 32 bits of 400uS tick, stop bit
 ;       Payload bits: one = "10", Zero = "01" in ticks.
+;   Grenade NEC protocol
+;       2.4mS header, 2.4mS header gap, 12 bits of 600uS tick, stop bit
+;       Payload bits: one = "10", Zero = "1000" in ticks.
 ; *****************************************************************************
 
 ; -----------------------------------------------------------------------------
@@ -36,7 +39,8 @@
 ;#define PROTOCOL_MAN16 ; Manchester protocol with 16 bit payload (pure serial number) [MAYBE SUPPORTED]
 ;#define PROTOCOL_NEC9  ; NEC protocol with 9 bit payload (4 bit id) [NOT SUPPORTED]
 ;#define PROTOCOL_MAN9  ; Manchester protocol with 9 bit payload (4 bit id) [NOT SUPPORTED]
-;;;#define PROTOCOL_MAN20A ; Manchester protocol with 20 bit payload [SUPPORTED]	; moved to grenade.asm
+;;;#define PROTOCOL_NEC12  ; NEC protocol with 8 bit payload (4 bit id) [SUPPORTED] ; moved to grenade.asm
+;;;#define PROTOCOL_MAN20A ; Manchester protocol with 20 bit payload [SUPPORTED] ; moved to grenade.asm
 
 ; -----------------------------------------------------------------------------
 ; Supposedly secondary (generated) parameters for the Infrared protocol
@@ -78,10 +82,19 @@
 ;#define PROTOCOL_9
 #endif
 
+#ifdef PROTOCOL_NEC12
+;#define PROTOCOL_NEC
+;#define PROTOCOL_12
+#endif
+
 ; -----------------------------------------------------------------------------
 ; Parameters for the Infrared protocol - speed choice
 Tim2_Speed	equ 256-100  ; 100uS timer2 interrupt (so 1ms=20/2 interrupts)
+#ifdef PROTOCOL_NEC12
+Tim_SendPkt_F   equ 40*20/2  ; (12 bits in 50uS units) 40ms base timing for sending fast packets (since NEC8 packets could take 34ms)
+#else
 Tim_SendPkt_F   equ 30*20/2  ; (12 bits in 50uS units) 30ms base timing for sending fast packets
+#endif
 Tim_SendPkt_S   equ 100*20/2 ; (12 bits in 50uS units) 100ms base timing for sending slow packets
 TIME_SLEEP      equ 60000    ; (16 bits in 30ms units) Timeout for sleep mode, in units of packets sent
 ;TIME_SLEEP      equ 1000    ; (16 bits in 30ms units) Timeout for sleep mode, in units of packets sent
@@ -116,9 +129,19 @@ IR_BitNum_Dat   equ 9    ; ^
 IR_BitNum_Dat   equ 9    ; ^
 #endif
 
+#ifdef PROTOCOL_NEC12
+IR_BitNum_Dat   equ 12    ; ^
+#endif
+
 ; -----------------------------------------------------------------------------
 
 ; Payload bit coding parameters
+#ifdef PROTOCOL_NEC12
+IR_01_Dat       equ 6    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_00_Dat       equ 12	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+IR_11_Dat       equ 6    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_10_Dat       equ 18   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+#else
 IR_01_Dat       equ 4    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
 IR_00_Dat       equ 8	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
 IR_11_Dat       equ 4    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
@@ -126,6 +149,7 @@ IR_11_Dat       equ 4    ; For one payload bits in NEC coding, the time spent hi
 IR_10_Dat       equ 8   ; For one payload bits in Manchester coding, the time spent high+low (in 100uS ticks)
 #else
 IR_10_Dat       equ 16   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+#endif
 #endif
 
 ; NEC 32 parameter
@@ -135,10 +159,16 @@ User_Dat_2Byte  equ 0F0H ; The 8 bit fixed portion of the 32 bit packet format
 #ifdef PROTOCOL_NEC32
 Tim_9ms         equ 90  ; The timer for 9ms header pulse
 tim_45ms        equ 45  ; 4.5ms header gap
-#else
+#endif
+#ifdef PROTOCOL_NEC12
+Tim_9ms         equ 24  ; Timer for 2.4ms header pulse (in 100uS units)
+tim_45ms        equ 24  ; Timer for 2.4ms header gap in 100uS units
+#endif
+#ifdef PROTOCOL_MAN
 Tim_9ms         equ 32  ; Timer for 3.2ms header pulse (in 100uS units)
 tim_45ms        equ 16  ; Timer for 1.6ms header gap in 100uS units
 #endif
+
 #ifdef PROTOCOL_MAN
 tim_gapms	equ tim_45ms+IR_01_Dat ; Gap (including start bit)
 #else
@@ -146,7 +176,11 @@ tim_gapms	equ tim_45ms-1 ; Gap (no start bit)
 #endif
 
 ; Parameters for the stop bit
+#ifdef PROTOCOL_NEC12
+IR_Last_Tim     equ 6   ; Timer for stop bit (in 100uS units)
+#else
 IR_Last_Tim     equ 4   ; Timer for stop bit (in 100uS units)
+#endif
 
 ; Parameters for the CRC calculation
 GenPoly         equ 07H  ; Generator Polynomial for the CRC
