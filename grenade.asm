@@ -71,7 +71,7 @@
 ; -----------------------------------------------------------------------------
 ; Special sam demo for testing range
 ; Keeps looping trigger
-#define SPECIAL_SAM 1
+;#define SPECIAL_SAM 1
 
 ; -----------------------------------------------------------------------------
 ; Include Block
@@ -2051,7 +2051,12 @@ gul_waiting:
 	sbc	a,#TIME_WAITING.n2
 	ld	a,(g_timer3)
 	sbc	a,#TIME_WAITING.n3
+#ifdef PROTOCOL_NEC4
+	; There is no room for priming the grenade in this protocol
+	jnc	Grenade_Arm
+#else
 	jnc	Grenade_Prime
+#endif
 	; Else do nothing
 	rets
 	
