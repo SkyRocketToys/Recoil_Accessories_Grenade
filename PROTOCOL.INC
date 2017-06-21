@@ -27,8 +27,8 @@
 ;       3.2mS header, 1.6mS header gap, start bit, 32 bits of 400uS tick, stop bit
 ;       Payload bits: one = "10", Zero = "01" in ticks.
 ;   Grenade NEC protocol
-;       2.4mS header, 2.4mS header gap, 12 bits of 600uS tick, stop bit
-;       Payload bits: one = "10", Zero = "1000" in ticks.
+;       2.4mS header, 2.4mS header gap, 4 or 12 bits of 600uS tick, stop bit
+;       Payload bits: zero = "10", one = "100" in ticks. (shorter)
 ; *****************************************************************************
 
 ; -----------------------------------------------------------------------------
@@ -199,7 +199,11 @@ tim_gapms	equ tim_45ms-1 ; Gap (no start bit)
 ; Parameters for the stop bit
 #ifdef PROTOCOL_NEC12
 IR_Last_Tim     equ 6   ; Timer for stop bit (in 100uS units)
-#else
+#endif
+#ifdef PROTOCOL_NEC4
+IR_Last_Tim     equ 6   ; Timer for stop bit (in 100uS units)
+#endif
+#ifdef PROTOCOL_MAN
 IR_Last_Tim     equ 4   ; Timer for stop bit (in 100uS units)
 #endif
 

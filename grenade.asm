@@ -239,6 +239,12 @@ BtnNow		; Button is pressed? (active high)
 BtnSmooth	; Button value 0 (off) ... 15 (on) for debouncing the other variables
 }
 
+IR_FLAG_HDR_MARK  equ 1 ; Bit0=header pulse has been sent.
+IR_FLAG_HDR_SPACE equ 2 ; Bit1=header gap has been sent
+IR_FLAG_PAYLOAD   equ 4 ; Bit2=payload has been sent
+IR_FLAG_STOP      equ 8 ; Bit3=stop bit has been sent
+IR_FLAG_PACKET	  equ 15; All bits set
+
 ; This is cached to reduce interrupt jitter on the infrared output enable
 IR_OnOff	equ USER1 ; set nonzero for on (copy to RTC register at next timer2 interrupt)
 
@@ -340,7 +346,7 @@ IrIsOff:
 IrIsDone:
 	
 	ld	a,(IR_Flag)
-	and	a,#0001b
+	and	a,#IR_FLAG_HDR_MARK
 	jnz	IR_9MS_OK_Prc ; Have we sent the initial header?
 
 	; Code for outputting the header pulse
@@ -356,7 +362,7 @@ Head_9ms_Prc:
 
 	; We have just finished the header pulse
 	ld	a,(IR_Flag)
-	or	a,#0001b ; Flag the header pulse as having been sent
+	or	a,#IR_FLAG_HDR_MARK ; Flag the header pulse as having been sent
 	ld	(IR_Flag),a
 	; Reset the phase timer
 	ld	a,#0
@@ -368,7 +374,7 @@ IR_9MS_OK_Prc:
 Ir_45ms_Chk_Prc:
 	; Have we sent the header gap?
 	ld	a,(IR_Flag)
-	and	a,#0010b
+	and	a,#IR_FLAG_HDR_SPACE
 	jnz	IR_45MS_Ok_Prc
 
 	; Have we finished the gap?
@@ -390,7 +396,7 @@ Ir_45ms_Chk_Prc:
 	ld	(IR_BaseTim0),a
 	ld	(IR_BaseTim1),a
 	ld	a,(IR_Flag)
-	or	a,#0010b
+	or	a,#IR_FLAG_HDR_SPACE
 	ld	(IR_Flag),a
 	jmp	INT_End
 
@@ -409,11 +415,11 @@ IR_StartBit:
 IR_45MS_Ok_Prc:
 Data_rx_Prc:
 	ld	A,(IR_Flag)
-	and	A,#0100B
+	and	A,#IR_FLAG_PAYLOAD
 	jnz	DATA_RX_OK_Prc
 
 	; ====================================
-	; Send the payload bits (originally 32 bits; now can also be 20, 16 or 9 bits)
+	; Send the payload bits (originally 32 bits; now can also be 20, 16, 12, 9 or 4 bits)
 Data_32bit_RX_Prc:
 	ld	a,(IR_Num0)
 	cmp	a,#IR_BitNum_Dat.n0
@@ -522,7 +528,7 @@ Bit_1_0_RX_Prc:
 	jmp	INT_End
 
 RX_1_OK_Prc:
-	; Completed transmitting a zero bit
+	; Completed transmitting a one bit
 	ld	a,#0
 	ld	(IR_BaseTim0),a
 	ld	(IR_BaseTim1),a
@@ -532,22 +538,24 @@ RX_1_OK_Prc:
 	adr	(IR_Num1)
 	jmp	INT_End
 
-; Have transmitted all payload bits
+; Have just transmitted all payload bits
 RX_Data_32Bit_OK_Prc:
 	ld	a,#0
 	ld	(IR_Num0),a
 	ld	(IR_Num1),a
 
 	ld	a,(IR_Flag)
-	or	a,#0100B
+	or	a,#IR_FLAG_PAYLOAD
 	ld	(IR_Flag),a
+	; Transmit the stop bit (don't delay 100us!)
+	set	#2,(IR_OnOff) ; PA1 output 38kHz infrared beam
 	jmp	INT_End 
 
 DATA_RX_OK_Prc:
 	; ====================================
 	; Transmit the stop bit (all payload has been sent)
 	ld	a,(IR_Flag)
-	and	a,#1000B
+	and	a,#IR_FLAG_STOP
 	jnz	Ir_Last_data_Rx_Ok_Prc
 IR_Last_Dat_RX_Prc:
 	; Send the stop bit - have we finished sending it?
@@ -566,14 +574,14 @@ Last_Dat_RX__OK_Prc:
 	ld	(IR_BaseTim0),a
 	ld	(IR_BaseTim1),a
 	ld	a,(IR_Flag)
-	or	a,#1000B	; If not already true
+	or	a,#IR_FLAG_STOP	; If not already true
 	ld	(IR_Flag),a
 	jmp	INT_End
 
 ; The complete packet has been sent
 Ir_Last_data_Rx_Ok_Prc:
 	ld	a,(IR_Flag)
-	cmp	a,#0fh
+	cmp	a,#IR_FLAG_PACKET
 	jnz	INT_End 
 
 	clr	#2,(IR_OnOff) ; PA1 no output infrared beam
