@@ -48,9 +48,13 @@
 ;#define PROTOCOL_MAN
 ;#define PROTOCOL_20A
 
-#define PROTOCOL_NEC12
+;#define PROTOCOL_NEC12
+;#define PROTOCOL_NEC
+;#define PROTOCOL_12
+
+#define PROTOCOL_NEC4
 #define PROTOCOL_NEC
-#define PROTOCOL_12
+#define PROTOCOL_4
 
 ; -----------------------------------------------------------------------------
 #define USE_FIXED_SERIAL 0 ; Use a fixed serial number instead of unique serial number
@@ -1013,6 +1017,12 @@ CRC_Chk_Code:
 	ld	(CRC_DATA2),a
 	ld	(CRC_DATA3),a
 #endif
+#ifdef PROTOCOL_4
+	ld	a,#0
+	ld	(CRC_DATA1),a
+	ld	(CRC_DATA2),a
+	ld	(CRC_DATA3),a
+#endif
 
 	; Setup the initial CRC value
 	ld	a,#C_InitVal.n0
@@ -1170,6 +1180,19 @@ Data_Int_Code:
 	adc	a,(IR_CRC_Buf1)
 	ld	(IR_PktData2),a
 	ld	a,#0
+	ld	(IR_PktData3),a
+	ld	(IR_PktData4),a
+	ld	(IR_PktData5),a
+	ld	(IR_PktData6),a
+	ld	(IR_PktData7),a
+#endif
+#ifdef PROTOCOL_4
+	; 4 bits state
+	ld	a,(Payload0)
+	ld	(IR_PktData0),a
+	ld	a,#0
+	ld	(IR_PktData1),a
+	ld	(IR_PktData2),a
 	ld	(IR_PktData3),a
 	ld	(IR_PktData4),a
 	ld	(IR_PktData5),a

@@ -39,6 +39,7 @@
 ;#define PROTOCOL_MAN16 ; Manchester protocol with 16 bit payload (pure serial number) [MAYBE SUPPORTED]
 ;#define PROTOCOL_NEC9  ; NEC protocol with 9 bit payload (4 bit id) [NOT SUPPORTED]
 ;#define PROTOCOL_MAN9  ; Manchester protocol with 9 bit payload (4 bit id) [NOT SUPPORTED]
+;;;#define PROTOCOL_NEC4   ; NEC protocol with 4 bit payload (4 bit id) [SUPPORTED] ; moved to grenade.asm
 ;;;#define PROTOCOL_NEC12  ; NEC protocol with 8 bit payload (4 bit id) [SUPPORTED] ; moved to grenade.asm
 ;;;#define PROTOCOL_MAN20A ; Manchester protocol with 20 bit payload [SUPPORTED] ; moved to grenade.asm
 
@@ -87,6 +88,11 @@
 ;#define PROTOCOL_12
 #endif
 
+#ifdef PROTOCOL_NEC4
+;#define PROTOCOL_NEC
+;#define PROTOCOL_4
+#endif
+
 ; -----------------------------------------------------------------------------
 ; Parameters for the Infrared protocol - speed choice
 Tim2_Speed	equ 256-100  ; 100uS timer2 interrupt (so 1ms=20/2 interrupts)
@@ -133,9 +139,19 @@ IR_BitNum_Dat   equ 9    ; ^
 IR_BitNum_Dat   equ 12    ; ^
 #endif
 
+#ifdef PROTOCOL_NEC4
+IR_BitNum_Dat   equ 4    ; ^
+#endif
+
 ; -----------------------------------------------------------------------------
 
 ; Payload bit coding parameters
+#ifdef PROTOCOL_NEC4
+IR_01_Dat       equ 6    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_00_Dat       equ 12	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+IR_11_Dat       equ 6    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_10_Dat       equ 18   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+#else
 #ifdef PROTOCOL_NEC12
 IR_01_Dat       equ 6    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
 IR_00_Dat       equ 12	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
@@ -151,6 +167,7 @@ IR_10_Dat       equ 8   ; For one payload bits in Manchester coding, the time sp
 IR_10_Dat       equ 16   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
 #endif
 #endif
+#endif
 
 ; NEC 32 parameter
 User_Dat_2Byte  equ 0F0H ; The 8 bit fixed portion of the 32 bit packet format
@@ -161,6 +178,10 @@ Tim_9ms         equ 90  ; The timer for 9ms header pulse
 tim_45ms        equ 45  ; 4.5ms header gap
 #endif
 #ifdef PROTOCOL_NEC12
+Tim_9ms         equ 24  ; Timer for 2.4ms header pulse (in 100uS units)
+tim_45ms        equ 24  ; Timer for 2.4ms header gap in 100uS units
+#endif
+#ifdef PROTOCOL_NEC4
 Tim_9ms         equ 24  ; Timer for 2.4ms header pulse (in 100uS units)
 tim_45ms        equ 24  ; Timer for 2.4ms header gap in 100uS units
 #endif
