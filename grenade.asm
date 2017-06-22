@@ -237,6 +237,22 @@ BtnTimer	; For spacing out the read (debouncing)
 BtnLast		; Last button was pressed? (active high)
 BtnNow		; Button is pressed? (active high)
 BtnSmooth	; Button value 0 (off) ... 15 (on) for debouncing the other variables
+
+; Fast explosion logic
+SendExplode	; 0=normal, 1=Explosion enabled
+ExplodePhase	; 0=off phase, 1=on phase during explosion
+
+Dummy0
+Dummy1
+; (would be a bank boundary if this was handled manually)
+
+; Initial delay timer
+Delay0
+Delay1
+Delay2
+Delay3
+Delay4
+
 }
 
 IR_FLAG_HDR_MARK  equ 1 ; Bit0=header pulse has been sent.
@@ -324,6 +340,11 @@ Tim2_Int_Prc:
 	adr	(g_timer2)
 	adr	(g_timer3)
 
+	; Support special grenade explosion
+	ld	a,(SendExplode)
+	cmp	a,#1	; Just in case this is set to a bad value
+	jz	IR_SendExplode
+
 	; Are we sending IR data?
 	ld	a,(IR_Enable_Flag)
 	jz	INT_End
@@ -344,7 +365,7 @@ Tim2_Int_Prc:
 IrIsOff:
 	clr	#2,(RTC) ; PA1 no output infrared beam
 IrIsDone:
-	
+
 	ld	a,(IR_Flag)
 	and	a,#IR_FLAG_HDR_MARK
 	jnz	IR_9MS_OK_Prc ; Have we sent the initial header?
@@ -602,6 +623,101 @@ INT_End_NoInc:
 	ld	a,(A_SRT) ; Restore the A register
 	reti
 
+; Interrupt Routine to send special grenade explosion pulse instead of normal packet
+IR_SendExplode:
+	; Where are we in the transmission?
+	inc	(IR_BaseTim0) ; Increment 8 bit timer
+	adr	(IR_BaseTim1)
+
+	ld	a,(IR_BaseTim0)
+	cmp	a,#tim_explode_pulse.n0
+	ld	a,(IR_BaseTim1)
+	sbc	a,#tim_explode_pulse.n1
+	jc	INT_End
+	
+	; Pulse has changed phase
+	ld	a,#0
+	ld	(IR_BaseTim0),a
+	ld	(IR_BaseTim1),a
+
+	inc	(ExplodePhase)
+	ld	A,(ExplodePhase)
+	and	A,#3
+	jz	XIrIsOn
+	cmp	A,#1
+	jz	XIrIsOff
+	; Reduce duty cycle on pulses to give receiver a chance to see them
+	clr	#2,(RTC) ; PA1 no output infrared beam
+	jmp	INT_End
+XIrIsOn:
+	set	#2,(RTC) ; PA1 output infrared beam
+	jmp	INT_End
+XIrIsOff:
+	clr	#2,(RTC) ; PA1 no output infrared beam
+
+	; Duplicate of code in Grenade_update_outi
+	; Since on the Tritan chip an interrupt cannot call a subroutine (safely)
+	inc	(g_outi)
+	ld	a,(g_outi)
+	and	a,#ADDRESS_MASK
+#ifdef BOARD_STEPHEN
+	#error
+#endif
+
+#ifdef BOARD_DEVELOP
+	#error
+#endif
+
+#ifdef BOARD_8LEDS
+	and	a,#7
+	jz	igou_0
+	cmp	a,#1
+	jz	igou_1
+	cmp	a,#2
+	jz	igou_2
+	cmp	a,#3
+	jz	igou_3
+	cmp	a,#4
+	jz	igou_4
+	cmp	a,#5
+	jz	igou_5
+	cmp	a,#6
+	jz	igou_6
+igou_7:
+	clr	#PIN_EN7,(PORT_EN7)
+	set	#PIN_EN8,(PORT_EN8)
+	jmp	INT_End
+igou_6:
+	clr	#PIN_EN6,(PORT_EN6)
+	set	#PIN_EN7,(PORT_EN7)
+	jmp	INT_End
+igou_5:
+	clr	#PIN_EN5,(PORT_EN5)
+	set	#PIN_EN6,(PORT_EN6)
+	jmp	INT_End
+igou_4:
+	clr	#PIN_EN4,(PORT_EN4)
+	set	#PIN_EN5,(PORT_EN5)
+	jmp	INT_End
+igou_3:
+	clr	#PIN_EN3,(PORT_EN3)
+	set	#PIN_EN4,(PORT_EN4)
+	jmp	INT_End
+igou_2:
+	clr	#PIN_EN2,(PORT_EN2)
+	set	#PIN_EN3,(PORT_EN3)
+	jmp	INT_End
+igou_1:
+	clr	#PIN_EN1,(PORT_EN1)
+	set	#PIN_EN2,(PORT_EN2)
+	jmp	INT_End
+igou_0:
+	clr	#PIN_EN8,(PORT_EN8)
+	set	#PIN_EN1,(PORT_EN1)
+#endif
+	jmp	INT_End
+
+
 ; -----------------------------------------------------------------------------
 ; MAIN PROGRAM entry point
 PGMSRT:
@@ -619,25 +735,25 @@ PGMSRT:
 	; Should be 11 cycles * (0x100000-0xF5000) / 2 Mhz = about 0.25 seconds
 	ldmah	#DELAY_MAH
 	ld	A,#0
-	ld	(20H),A
-	ld	(21H),A
-	ld	(22H),A
+	ld	(Delay0),A
+	ld	(Delay1),A
+	ld	(Delay2),A
 	ld	A,#05H ; Short delay
-	ld	(23H),A
+	ld	(Delay3),A
 	ld	A,#0FH ; Short delay
-	ld	(24H),A ; 20 bit timer 0xF5000
+	ld	(Delay4),A ; 20 bit timer 0xF5000
 DELAY1:
 	ld	A,#05H
 	ld	(WDT),A ; Kick the watchdog
 
-	ld	A,(20H)
+	ld	A,(Delay0)
 	clr	C
 	adc	A,#1
-	ld	(20H),A
-	adr	(21H)
-	adr	(22H)
-	adr	(23H)
-	adr	(24H)
+	ld	(Delay0),A
+	adr	(Delay1)
+	adr	(Delay2)
+	adr	(Delay3)
+	adr	(Delay4)
 	jnc	DELAY1
 
 	; Initialise input/output again
@@ -655,28 +771,28 @@ DELAY1:
 	; Should be 11 cycles * (0x100000-0xE0000) / 2 Mhz = about 0.72 seconds
 	ldmah	#DELAY_MAH
 	ld	A,#0
-	ld	(20H),A
-	ld	(21H),A
-	ld	(22H),A
-	ld	(23H),A
+	ld	(Delay0),A
+	ld	(Delay1),A
+	ld	(Delay2),A
+	ld	(Delay3),A
 #ifdef SPECIAL_SIMON
 	ld	A,#09h ; Longer delay
 #else
 	ld	A,#0DH ; Short delay
 #endif
-	ld	(24H),A ; 20 bit timer 0xD0000
+	ld	(Delay4),A ; 20 bit timer 0xD0000
 DELAY2:
 	ld	A,#05H
 	ld	(WDT),A ; Kick the watchdog
 
-	ld	A,(20H)
+	ld	A,(Delay0)
 	clr	C
 	adc	A,#2
-	ld	(20H),A
-	adr	(21H)
-	adr	(22H)
-	adr	(23H)
-	adr	(24H)
+	ld	(Delay0),A
+	adr	(Delay1)
+	adr	(Delay2)
+	adr	(Delay3)
+	adr	(Delay4)
 	jnc	DELAY2
 SkipLongDelay:
 
@@ -727,6 +843,8 @@ SkipLongDelay:
 	ld	(IR_Group0),A
 	ld	(IR_Group1),A
 	ld	(IR_Enable_Flag),A
+	ld	(SendExplode),A
+
 
 ; -----------------------------------------------------------------------------
 ; Where wakeup code would return to
@@ -827,6 +945,11 @@ Tim_SendPkt_Chk_Prc:
 	ld	a,(g_update)
 	or	a,(g_send)
 	jz	Tim_SendPkt_Chk_RP
+	
+	; Are we in special explode pulse mode?
+	ld	a,(SendExplode)
+	jnz	Tim_SendPkt_Chk_RP	; Let the interrupt take care of grenade cycling
+
 
 SendPkt_TestAgain:
 	; Are we in explosion mode (many fast+slow packets) or tick mode (fewer fast packets)
@@ -1930,6 +2053,8 @@ Grenade_update_logic:
 gul_nocancel:
 
 	; 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+	ld	a,#0
+	ld	(SendExplode),A
 
 	; Normal state
 	ld	a,(g_timer0)
@@ -1986,11 +2111,15 @@ gul_not_next_state:
 ; -------------------------------------	
 ; In the unarmed state
 gul_unarmed:
+	ld	a,#0
+	ld	(SendExplode),A
 	rets	; Do nothing. So why are we not powered off?
 
 ; -------------------------------------	
 ; The grenade has been cancelled
 gul_cancelled:
+	ld	a,#0
+	ld	(SendExplode),A
 	ld	a,(g_timer0)
 	cmp	a,#TIME_CANCELLED.n0
 	ld	a,(g_timer1)
@@ -2040,6 +2169,8 @@ gul_off:
 ; -------------------------------------	
 ; We are waiting to see if we will prime the grenade
 gul_waiting:
+	ld	a,#0
+	ld	(SendExplode),A
 	ld	a,(BtnNow)
 	jz	Grenade_Arm
 
@@ -2064,6 +2195,8 @@ gul_waiting:
 ; -------------------------------------	
 ; We are priming the grenade
 gul_priming:
+	ld	a,#0
+	ld	(SendExplode),A
 	inc	(g_random)	; Increment the value
 	adr	(g_random)	; Avoid zero
 	ld	a,(BtnNow)
@@ -2118,6 +2251,8 @@ gul_priming_send:
 ; -------------------------------------	
 ; We are in the primed state
 gul_primed:
+	ld	a,#0
+	ld	(SendExplode),A
 	; Arming? - on release
 	ld	a,(BtnNow)
 	jnz	gul_noarmp
@@ -2178,6 +2313,8 @@ gul_primed_pkt:
 ; -------------------------------------	
 ; In the explode state
 gul_explode:
+	ld	a,#1
+	ld	(SendExplode),A
 	ld	a,(g_timer0)
 	cmp	a,#TIME_EXPLODE.n0
 	ld	a,(g_timer1)
@@ -2226,6 +2363,8 @@ gul_notbang:
 
 gul_done:
 	; We have finished the explosion
+	ld	a,#0
+	ld	(SendExplode),A
 #ifdef SPECIAL_SAM
 	ld	a,#state_10
 #else

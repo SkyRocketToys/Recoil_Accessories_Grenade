@@ -189,6 +189,7 @@ tim_45ms        equ 24  ; Timer for 2.4ms header gap in 100uS units
 Tim_9ms         equ 32  ; Timer for 3.2ms header pulse (in 100uS units)
 tim_45ms        equ 16  ; Timer for 1.6ms header gap in 100uS units
 #endif
+tim_explode_pulse	equ	48	; The timer for 4.8ms header pulse for explosions
 
 #ifdef PROTOCOL_MAN
 tim_gapms	equ tim_45ms+IR_01_Dat ; Gap (including start bit)
