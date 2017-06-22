@@ -247,11 +247,11 @@ Dummy1
 ; (would be a bank boundary if this was handled manually)
 
 ; Initial delay timer
-Delay0
-Delay1
-Delay2
-Delay3
-Delay4
+CntDelay0
+CntDelay1
+CntDelay2
+CntDelay3
+CntDelay4
 
 }
 
@@ -735,25 +735,25 @@ PGMSRT:
 	; Should be 11 cycles * (0x100000-0xF5000) / 2 Mhz = about 0.25 seconds
 	ldmah	#DELAY_MAH
 	ld	A,#0
-	ld	(Delay0),A
-	ld	(Delay1),A
-	ld	(Delay2),A
+	ld	(CntDelay0),A
+	ld	(CntDelay1),A
+	ld	(CntDelay2),A
 	ld	A,#05H ; Short delay
-	ld	(Delay3),A
+	ld	(CntDelay3),A
 	ld	A,#0FH ; Short delay
-	ld	(Delay4),A ; 20 bit timer 0xF5000
+	ld	(CntDelay4),A ; 20 bit timer 0xF5000
 DELAY1:
 	ld	A,#05H
 	ld	(WDT),A ; Kick the watchdog
 
-	ld	A,(Delay0)
+	ld	A,(CntDelay0)
 	clr	C
 	adc	A,#1
-	ld	(Delay0),A
-	adr	(Delay1)
-	adr	(Delay2)
-	adr	(Delay3)
-	adr	(Delay4)
+	ld	(CntDelay0),A
+	adr	(CntDelay1)
+	adr	(CntDelay2)
+	adr	(CntDelay3)
+	adr	(CntDelay4)
 	jnc	DELAY1
 
 	; Initialise input/output again
@@ -771,28 +771,28 @@ DELAY1:
 	; Should be 11 cycles * (0x100000-0xE0000) / 2 Mhz = about 0.72 seconds
 	ldmah	#DELAY_MAH
 	ld	A,#0
-	ld	(Delay0),A
-	ld	(Delay1),A
-	ld	(Delay2),A
-	ld	(Delay3),A
+	ld	(CntDelay0),A
+	ld	(CntDelay1),A
+	ld	(CntDelay2),A
+	ld	(CntDelay3),A
 #ifdef SPECIAL_SIMON
 	ld	A,#09h ; Longer delay
 #else
 	ld	A,#0DH ; Short delay
 #endif
-	ld	(Delay4),A ; 20 bit timer 0xD0000
+	ld	(CntDelay4),A ; 20 bit timer 0xD0000
 DELAY2:
 	ld	A,#05H
 	ld	(WDT),A ; Kick the watchdog
 
-	ld	A,(Delay0)
+	ld	A,(CntDelay0)
 	clr	C
 	adc	A,#2
-	ld	(Delay0),A
-	adr	(Delay1)
-	adr	(Delay2)
-	adr	(Delay3)
-	adr	(Delay4)
+	ld	(CntDelay0),A
+	adr	(CntDelay1)
+	adr	(CntDelay2)
+	adr	(CntDelay3)
+	adr	(CntDelay4)
 	jnc	DELAY2
 SkipLongDelay:
 
