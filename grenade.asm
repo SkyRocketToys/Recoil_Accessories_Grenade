@@ -44,17 +44,19 @@
 ; -----------------------------------------------------------------------------
 ; Choose an appropriate protocol from protocol.inc, and its subdefines
 ; since the assembler does not get them correctly.
-;#define PROTOCOL_MAN20A
-;#define PROTOCOL_MAN
-;#define PROTOCOL_20A
+#define PROTOCOL_MAN20A
+#define PROTOCOL_MAN
+#define PROTOCOL_20A
 
 ;#define PROTOCOL_NEC12
 ;#define PROTOCOL_NEC
 ;#define PROTOCOL_12
 
-#define PROTOCOL_NEC4
-#define PROTOCOL_NEC
-#define PROTOCOL_4
+;#define PROTOCOL_NEC4
+;#define PROTOCOL_NEC
+;#define PROTOCOL_4
+;#define PROTOCOL_EXPLODE_PULSE
+; Note that the explode pulse happens during the explosion state
 
 ; -----------------------------------------------------------------------------
 #define USE_FIXED_SERIAL 0 ; Use a fixed serial number instead of unique serial number
@@ -112,7 +114,8 @@ TIME_PRIMING	equ  50*25/2 ; Size of priming ticks
 TIME_PRIMED	equ 500*25/2 ; Size of primed ticks (between sending out packets)
 TIME_WAITING	equ 750*25/2 ; Time to wait to see if priming or armed
 COUNT_PRIMING	equ 10 ; Number of priming ticks between packets (assumed to be even) (assumed to be <255)
-COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
+;;COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
+COUNT_EXPLODE	equ 100 ; Number of explosion ticks before going to sleep (assumed to be <=255)
 COUNT_TICK	equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
 COUNT_CANCELLED	equ 20 ; Number of cancelled ticks before going to sleep (assumed to be <=255)
 COUNT_PRIMED	equ  5 ; How long are we solid in the primed mode? (2 seconds)
@@ -842,8 +845,6 @@ SkipLongDelay:
 	ld	A,#0
 	ld	(IR_Group0),A
 	ld	(IR_Group1),A
-	ld	(IR_Enable_Flag),A
-	ld	(SendExplode),A
 
 
 ; -----------------------------------------------------------------------------
@@ -854,7 +855,20 @@ WakeUp:
 	; We want the RTC interrupt to be every 1s instead of 125ms to avoid disruption
 	set	#1,(RTC)
 	set	#0,(RTC)
-
+	; Initialise output to be sure
+	ld	a,#0
+	ld	(IR_Enable_Flag),A
+	ld	(SendExplode),A
+	ld	(g_send),a
+	ld	(g_update),a
+	ld	(Payload0),a
+	ld	(Payload1),a
+	ld	(Payload2),a
+	ld	(Payload3),a
+	ld	(IR_CRC_Buf0),A
+	ld	(IR_CRC_Buf1),A
+	call	Data_Int_Code
+	
 ; -----------------------------------------------------------------------------
 ; Main loop for background tasks
 ; The call stack is too short to implement routines but these tasks are effectively subroutines
@@ -1113,6 +1127,7 @@ Chk_Halt_Tim_Prc:
 #endif
 	nop
 PowerOffLoop:
+	; We could be stuck here a while if the button is being held!
 	nop
 	nop
 	jmp	PowerOffLoop
@@ -2184,7 +2199,8 @@ gul_waiting:
 	sbc	a,#TIME_WAITING.n3
 #ifdef PROTOCOL_NEC4
 	; There is no room for priming the grenade in this protocol
-	jnc	Grenade_Arm
+	rets	; Wait for user to release button before starting countdown
+;	jnc	Grenade_Arm	; Arm it on timeout
 #else
 	jnc	Grenade_Prime
 #endif
@@ -2313,7 +2329,11 @@ gul_primed_pkt:
 ; -------------------------------------	
 ; In the explode state
 gul_explode:
+#ifdef PROTOCOL_EXPLODE_PULSE
 	ld	a,#1
+#else
+	ld	a,#0
+#endif
 	ld	(SendExplode),A
 	ld	a,(g_timer0)
 	cmp	a,#TIME_EXPLODE.n0
