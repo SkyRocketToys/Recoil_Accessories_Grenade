@@ -47,6 +47,7 @@
 #define PROTOCOL_MAN20A
 #define PROTOCOL_MAN
 #define PROTOCOL_20A
+#define PROTOCOL_OUTSTATE	; Output the outstate instead of the state
 
 ;#define PROTOCOL_NEC12
 ;#define PROTOCOL_NEC
@@ -89,7 +90,7 @@
 
 ; -----------------------------------------------------------------------------
 
-; grenade logic equates
+; grenade logic equates (internal logic)
 state_unarmed	equ 0
 state_cancelled	equ 1
 state_priming	equ 2
@@ -107,6 +108,24 @@ state_1		equ 13
 state_explode	equ 14
 state_waiting	equ 15	; On start up, wait for a while to decide if priming or armed
 
+; Output "state" as requested on 27 jun 2017 (and made sensible by including primed/cancelled)
+outstate_none		equ	0	; Do not output packets
+outstate_explode0	equ	1	; Old cancelled button - may be more visible
+outstate_explode5	equ	2
+outstate_explode10	equ	3
+outstate_explode15	equ	4
+outstate_explode20	equ	5
+outstate_explode25	equ	6
+outstate_explode30	equ	7
+outstate_explode35	equ	8
+outstate_explode40	equ	9
+outstate_explode45	equ	10
+outstate_explode50	equ	11
+outstate_explode55	equ	12
+outstate_cancelled	equ	13
+outstate_primed		equ	15
+
+
 TIME_TICK	equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
 TIME_EXPLODE	equ 100*25/2 ; Size of explosion ticks in ms->interrupt units (assumed to be <=65535)
 TIME_CANCELLED	equ 100*25/2 ; Size of cancelled ticks in ms->interrupt units (assumed to be <=65535)
@@ -115,7 +134,7 @@ TIME_PRIMED	equ 500*25/2 ; Size of primed ticks (between sending out packets)
 TIME_WAITING	equ 750*25/2 ; Time to wait to see if priming or armed
 COUNT_PRIMING	equ 10 ; Number of priming ticks between packets (assumed to be even) (assumed to be <255)
 ;;COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
-COUNT_EXPLODE	equ 100 ; Number of explosion ticks before going to sleep (assumed to be <=255)
+COUNT_EXPLODE	equ 50 ; Number of explosion ticks before changing explosion counter (assumed to be <=255)
 COUNT_TICK	equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
 COUNT_CANCELLED	equ 20 ; Number of cancelled ticks before going to sleep (assumed to be <=255)
 COUNT_PRIMED	equ  5 ; How long are we solid in the primed mode? (2 seconds)
@@ -183,8 +202,9 @@ Tim_SendPkt1   ; 12 bit counter (incremented once per Timer2 interrupt)
 Tim_SendPkt2   ; ^  Used for determining timing of sending packets
 Tim_SendPkt3   ; ^  SHARED between main thread and interrupt thread! Be careful!
 
-IR_Group0      ; 8 bit counter (incremented every packet) for checking fast vs slow packets
+IR_Group0      ; 12 bit counter (incremented every packet) for checking fast vs slow packets
 IR_Group1      ; ^  For main thread
+IR_Group2      ; ^  For main thread
 
 IR_Enable_Flag ; Zero = Do not touch infrared, One = allow infrared
 IR_Flag        ; Bit0=header pulse has been sent.
@@ -198,8 +218,8 @@ IR_BaseTim0    ; 8 bit counter incremented every timer2 (100uS) "Do basic time w
 IR_BaseTim1    ; ^ this is reset between phases (e.g. header, gap, each payload bit)
 IR_BIT_OK_FLAG ; True iff IR_Bit is valid. False if a new payload bit should be extracted from the packet.
 IR_Bit         ; The value of the current transmitting payload bit (0 or 1)
-LastTim1       ; Used for checking that multi nybble comparisons have not been invalidated
 ; (would be a bank boundary if this was handled manually)
+LastTim1       ; Used for checking that multi nybble comparisons have not been invalidated
 g_poweroff     ; Flag to turn the power off (no sleep mode in this project)
 g_quiet        ; In primed mode, this means we are quiet
 
@@ -245,8 +265,8 @@ BtnSmooth	; Button value 0 (off) ... 15 (on) for debouncing the other variables
 SendExplode	; 0=normal, 1=Explosion enabled
 ExplodePhase	; 0=off phase, 1=on phase during explosion
 
-Dummy0
-Dummy1
+OutState	; outstate_xxx for output
+
 ; (would be a bank boundary if this was handled manually)
 
 ; Initial delay timer
@@ -845,6 +865,7 @@ SkipLongDelay:
 	ld	A,#0
 	ld	(IR_Group0),A
 	ld	(IR_Group1),A
+	ld	(IR_Group2),A
 
 
 ; -----------------------------------------------------------------------------
@@ -978,6 +999,8 @@ SendPkt_TestExplode:
 	cmp	a,#ExplodeNumFast.n0
 	ld	a,(IR_Group1)
 	sbc	a,#ExplodeNumFast.n1
+	ld	a,(IR_Group2)
+	sbc	a,#ExplodeNumFast.n2
 	jc	SendPkt_TestFast
 
 SendPkt_TestSlow:
@@ -1019,6 +1042,7 @@ SendPkt_Trigger:
 	; Increment packet count within the group
 	inc	(IR_Group0)
 	adr	(IR_Group1)
+	adr	(IR_Group2)
 
 	; Are we in the explosion state?
 	ld	a,(g_state)
@@ -1030,6 +1054,8 @@ SendPkt_Trigger:
 	cmp	a,#WarningNumTotal.n0
 	ld	a,(IR_Group1)
 	sbc	a,#WarningNumTotal.n1
+	ld	a,(IR_Group2)
+	sbc	a,#WarningNumTotal.n2
 	jc	SendPkt_NoWrap
 	jmp	SendPkt_EndGroup
 
@@ -1039,6 +1065,8 @@ SendPkt_Xgroup:
 	cmp	a,#ExplodeNumTotal.n0
 	ld	a,(IR_Group1)
 	sbc	a,#ExplodeNumTotal.n1
+	ld	a,(IR_Group2)
+	sbc	a,#ExplodeNumTotal.n2
 	jc	SendPkt_NoWrap
 SendPkt_EndGroup:
 	; End of this group.
@@ -1046,6 +1074,7 @@ SendPkt_EndGroup:
 	ld	a,#0
 	ld	(IR_Group0),a
 	ld	(IR_Group1),a
+	ld	(IR_Group2),a
 	ld	(g_send),a
 SendPkt_NoWrap:
 	
@@ -1667,16 +1696,22 @@ Grenade_SetState:
 
 ; ----------------------------------------------------------------------------
 Grenade_Arm:
-	ld	a,#state_10
+	ld	a,#outstate_none
+	ld	(outstate),A
+	ld	a,#state_5
 	jmp	Grenade_SetState
 
 ; ----------------------------------------------------------------------------
 Grenade_Wait:
+	ld	a,#outstate_none
+	ld	(outstate),A
 	ld	a,#state_waiting
 	jmp	Grenade_SetState
 
 ; ----------------------------------------------------------------------------
 Grenade_Prime:
+	ld	a,#outstate_none
+	ld	(outstate),A
 	ld	a,#state_priming
 	jmp	Grenade_SetState
 
@@ -1684,11 +1719,15 @@ Grenade_Prime:
 Grenade_Primed:
 	ld	a,#0
 	ld	(g_quiet),A
+	ld	a,#outstate_primed
+	ld	(outstate),A
 	ld	a,#state_primed
 	jmp	Grenade_SetState
 
 ; ----------------------------------------------------------------------------
 Grenade_Cancel:
+	ld	a,#outstate_cancelled
+	ld	(outstate),A
 	ld	a,#state_cancelled
 	jmp	Grenade_SetState
 
@@ -1738,7 +1777,7 @@ gvis_primed:
 gvis_explode:	
 	; Explosion
 	ld	a,(g_timer1)
-	and	a,#3
+	and	a,#12
 	jz	gvis_off
 	jmp	gvis_on
 
@@ -2102,8 +2141,15 @@ gul_tick:
 	ld	(Payload2),a
 	ld	a,(g_random)
 	ld	(Payload1),a
+#ifdef PROTOCOL_OUTSTATE
+	ld	a,(OutState)
+	ld	(Payload0),a
+	cmp	a,#outstate_none	; Implied anyway
+	jz	gul_notfirst	; Don't output countdown packets any more
+#else
 	ld	a,(g_state)
 	ld	(Payload0),a
+#endif
 	inc	(g_update) ; Allow new packet to be sent
 gul_notfirst:
 
@@ -2119,6 +2165,14 @@ gul_notfirst:
 	ld	a,#0
 	ld	(g_substate0),a
 	ld	(g_substate1),a
+	ld	a,#outstate_none
+	ld	(outstate),A
+	ld	a,(g_state)
+	cmp	a,#state_explode
+	jnz	gul_not_next_state
+	; Start the explosion!
+	ld	a,#outstate_explode0
+	ld	(OutState),A
 gul_not_next_state:
 	rets
 
@@ -2162,7 +2216,11 @@ gul_ctick:
 	ld	(Payload2),a
 	ld	a,(g_random)
 	ld	(Payload1),a
+#ifdef PROTOCOL_OUTSTATE
+	ld	a,(OutState)
+#else
 	ld	a,(g_state)
+#endif
 	ld	(Payload0),a
 	inc	(g_update) ; Allow new packet to be sent
 
@@ -2259,9 +2317,17 @@ gul_priming_send:
 	ld	(Payload2),a
 	ld	a,#0		; No random yet
 	ld	(Payload1),a
+#ifdef PROTOCOL_OUTSTATE
+	ld	a,(OutState)
+	ld	(Payload0),a
+	cmp	a,#outstate_none
+	jz	gul_priming_exit	; No sending packet
+#else
 	ld	a,(g_state)
 	ld	(Payload0),a
+#endif
 	inc	(g_update)
+gul_priming_exit:
 	rets
 
 ; -------------------------------------	
@@ -2320,7 +2386,11 @@ gul_primed_pkt:
 	ld	(Payload2),a
 	ld	a,(g_random)
 	ld	(Payload1),a
+#ifdef PROTOCOL_OUTSTATE
+	ld	a,(OutState)
+#else
 	ld	a,(g_state)
+#endif
 	ld	(Payload0),a
 	inc	(g_update) ; Allow new packet to be sent
 
@@ -2365,9 +2435,18 @@ gul_boom:
 	ld	(Payload2),a
 	ld	a,(g_random)
 	ld	(Payload1),a
+#ifdef PROTOCOL_OUTSTATE
+	ld	a,(outstate)
+#else
 	ld	a,(g_state)
+#endif
 	ld	(Payload0),a
 	inc	(g_update)
+	; Reset to the beginning of the group
+	ld	a,#0
+	ld	(IR_Group0),a
+	ld	(IR_Group1),a
+	ld	(IR_Group2),a
 
 gul_notbang:
 	inc	(g_substate0)
@@ -2382,6 +2461,19 @@ gul_notbang:
 	rets
 
 gul_done:
+#ifdef PROTOCOL_OUTSTATE
+	ld	a,(OutState)
+	cmp	a,#outstate_explode55
+	jz	gul_alldone
+	; OK we are still in explosion state but different counter
+	inc	(OutState)
+	ld	a,#0
+	ld	(g_substate0),a
+	ld	(g_substate1),a
+	rets
+	
+gul_alldone:
+#endif
 	; We have finished the explosion
 	ld	a,#0
 	ld	(SendExplode),A

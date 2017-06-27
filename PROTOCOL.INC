@@ -219,9 +219,9 @@ WarningNumSlow	equ 0    ; Number of slow packets
 ; Generated parameters
 WarningNumTotal	equ WarningNumSlow+WarningNumFast+1
 
-; Parameters for the explode infrared packets
-ExplodeNumFast	equ 24   ; Number of fast packets
-ExplodeNumSlow	equ 8    ; Number of slow packets
+; Parameters for the explode infrared packets (can come to > 5000ms)
+ExplodeNumFast	equ 150   ; Number of fast packets
+ExplodeNumSlow	equ 8     ; Number of slow packets
 ; Generated parameters
 ExplodeNumTotal	equ ExplodeNumSlow+ExplodeNumFast+1
 
