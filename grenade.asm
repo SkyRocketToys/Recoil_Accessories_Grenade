@@ -62,6 +62,19 @@
 ; -----------------------------------------------------------------------------
 #define USE_FIXED_SERIAL 0 ; Use a fixed serial number instead of unique serial number
 
+
+; -----------------------------------------------------------------------------
+; Special versions for testing explosions - these all require PROTOCOL_MAN20A, PROTOCOL_OUTSTATE
+;#define SPECIAL_RC1 ; 30s detonation of state 1 (cancel is not sent)
+;#define SPECIAL_RC2 ; 10s detonation of state 1 (cancel is not sent)
+;#define SPECIAL_RC3 ; 5s detonation of state 1 (cancel is not sent)
+;#define SPECIAL_RC4 ; 30s detonation of state 14
+;#define SPECIAL_RC5 ; 10s detonation of state 14
+;#define SPECIAL_RC6 ; 5s detonation of state 14
+#define SPECIAL_RC7 ; 60s detonation of state 1..12
+
+
+
 ; -----------------------------------------------------------------------------
 ; Special simon demo for analysing power supply
 ; 1. ADDRESS_MASK is always 0 (use LED 1 only)
@@ -1727,6 +1740,15 @@ Grenade_Primed:
 ; ----------------------------------------------------------------------------
 Grenade_Cancel:
 	ld	a,#outstate_cancelled
+#ifdef SPECIAL_RC1
+	ld	a,#outstate_none
+#endif
+#ifdef SPECIAL_RC2
+	ld	a,#outstate_none
+#endif
+#ifdef SPECIAL_RC3
+	ld	a,#outstate_none
+#endif
 	ld	(outstate),A
 	ld	a,#state_cancelled
 	jmp	Grenade_SetState
@@ -2218,11 +2240,15 @@ gul_ctick:
 	ld	(Payload1),a
 #ifdef PROTOCOL_OUTSTATE
 	ld	a,(OutState)
+	ld	(Payload0),a
+	cmp	a,#outstate_none
+	jz	gul_cnocancel	; Don't output cancel packet in SPECIAL_RC1, SPECIAL_RC2, SPECIAL_RC3
 #else
 	ld	a,(g_state)
-#endif
 	ld	(Payload0),a
+#endif
 	inc	(g_update) ; Allow new packet to be sent
+gul_cnocancel:
 
 	; Are we done?
 	ld	a,(g_substate0)
@@ -2440,6 +2466,24 @@ gul_boom:
 #else
 	ld	a,(g_state)
 #endif
+#ifdef SPECIAL_RC1
+	ld	a,#state_cancelled
+#endif
+#ifdef SPECIAL_RC2
+	ld	a,#state_cancelled
+#endif
+#ifdef SPECIAL_RC3
+	ld	a,#state_cancelled
+#endif
+#ifdef SPECIAL_RC4
+	ld	a,#state_explode
+#endif
+#ifdef SPECIAL_RC5
+	ld	a,#state_explode
+#endif
+#ifdef SPECIAL_RC6
+	ld	a,#state_explode
+#endif
 	ld	(Payload0),a
 	inc	(g_update)
 	; Reset to the beginning of the group
@@ -2463,7 +2507,27 @@ gul_notbang:
 gul_done:
 #ifdef PROTOCOL_OUTSTATE
 	ld	a,(OutState)
+#ifdef SPECIAL_RC1
+	cmp	a,#outstate_explode25
+#endif
+#ifdef SPECIAL_RC2
+	cmp	a,#outstate_explode5
+#endif
+#ifdef SPECIAL_RC3
+	cmp	a,#outstate_explode0
+#endif
+#ifdef SPECIAL_RC4
+	cmp	a,#outstate_explode25
+#endif
+#ifdef SPECIAL_RC5
+	cmp	a,#outstate_explode5
+#endif
+#ifdef SPECIAL_RC6
+	cmp	a,#outstate_explode0
+#endif
+#ifdef SPECIAL_RC7
 	cmp	a,#outstate_explode55
+#endif
 	jz	gul_alldone
 	; OK we are still in explosion state but different counter
 	inc	(OutState)
