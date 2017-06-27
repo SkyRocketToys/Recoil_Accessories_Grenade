@@ -65,6 +65,7 @@
 
 ; -----------------------------------------------------------------------------
 ; Special versions for testing explosions - these all require PROTOCOL_MAN20A, PROTOCOL_OUTSTATE
+;#define SPECIAL_TEST ; 20s of state 1, 20s of state 14
 ;#define SPECIAL_RC1 ; 30s detonation of state 1 (cancel is not sent)
 ;#define SPECIAL_RC2 ; 10s detonation of state 1 (cancel is not sent)
 ;#define SPECIAL_RC3 ; 5s detonation of state 1 (cancel is not sent)
@@ -1712,6 +1713,9 @@ Grenade_Arm:
 	ld	a,#outstate_none
 	ld	(outstate),A
 	ld	a,#state_5
+#ifdef SPECIAL_TEST
+	ld	a,#state_1
+#endif
 	jmp	Grenade_SetState
 
 ; ----------------------------------------------------------------------------
@@ -1740,6 +1744,9 @@ Grenade_Primed:
 ; ----------------------------------------------------------------------------
 Grenade_Cancel:
 	ld	a,#outstate_cancelled
+#ifdef SPECIAL_TEST
+	ld	a,#outstate_none
+#endif
 #ifdef SPECIAL_RC1
 	ld	a,#outstate_none
 #endif
@@ -1797,6 +1804,12 @@ gvis_primed:
 	jmp	gvis_off
 
 gvis_explode:	
+#ifdef SPECIAL_TEST
+	ld	a,(outstate)
+	and	a,#4
+	jnz	gvis_faster
+#endif
+
 	; Explosion
 	ld	a,(g_timer1)
 	and	a,#12
@@ -2484,6 +2497,16 @@ gul_boom:
 #ifdef SPECIAL_RC6
 	ld	a,#state_explode
 #endif
+#ifdef SPECIAL_TEST
+	ld	a,(outstate)
+	and	a,#4
+	jz	gul_ssxx
+	ld	a,#state_explode
+	jmp	gul_ssxy
+gul_ssxx:
+	ld	a,#state_cancelled
+gul_ssxy:
+#endif
 	ld	(Payload0),a
 	inc	(g_update)
 	; Reset to the beginning of the group
@@ -2507,6 +2530,9 @@ gul_notbang:
 gul_done:
 #ifdef PROTOCOL_OUTSTATE
 	ld	a,(OutState)
+#ifdef SPECIAL_TEST
+	cmp	a,#outstate_explode35
+#endif
 #ifdef SPECIAL_RC1
 	cmp	a,#outstate_explode25
 #endif
@@ -2537,6 +2563,14 @@ gul_done:
 	rets
 	
 gul_alldone:
+#ifdef SPECIAL_TEST
+	ld	a,#outstate_explode0
+	ld	(outstate),a
+	ld	a,#0
+	ld	(g_substate0),a
+	ld	(g_substate1),a
+	rets
+#endif
 #endif
 	; We have finished the explosion
 	ld	a,#0
