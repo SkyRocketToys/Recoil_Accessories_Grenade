@@ -66,13 +66,13 @@
 ; -----------------------------------------------------------------------------
 ; Special versions for testing explosions - these all require PROTOCOL_MAN20A, PROTOCOL_OUTSTATE
 ;#define SPECIAL_TEST ; 20s of state 1, 20s of state 14
-;#define SPECIAL_RC1 ; 30s detonation of state 1 (cancel is not sent)
-;#define SPECIAL_RC2 ; 10s detonation of state 1 (cancel is not sent)
-;#define SPECIAL_RC3 ; 5s detonation of state 1 (cancel is not sent)
+#define SPECIAL_RC1 ; 30s detonation of state 1
+;#define SPECIAL_RC2 ; 10s detonation of state 1
+;#define SPECIAL_RC3 ; 5s detonation of state 1
 ;#define SPECIAL_RC4 ; 30s detonation of state 14
 ;#define SPECIAL_RC5 ; 10s detonation of state 14
 ;#define SPECIAL_RC6 ; 5s detonation of state 14
-#define SPECIAL_RC7 ; 60s detonation of state 1..12
+;#define SPECIAL_RC7 ; 60s detonation of state 1..12
 
 
 
@@ -1747,15 +1747,6 @@ Grenade_Cancel:
 #ifdef SPECIAL_TEST
 	ld	a,#outstate_none
 #endif
-#ifdef SPECIAL_RC1
-	ld	a,#outstate_none
-#endif
-#ifdef SPECIAL_RC2
-	ld	a,#outstate_none
-#endif
-#ifdef SPECIAL_RC3
-	ld	a,#outstate_none
-#endif
 	ld	(outstate),A
 	ld	a,#state_cancelled
 	jmp	Grenade_SetState
@@ -2438,6 +2429,13 @@ gul_primed_pkt:
 ; -------------------------------------	
 ; In the explode state
 gul_explode:
+	; Cancelling? - on release
+	ld	a,(BtnNow)
+	jnz	gul_xnocancel
+	ld	a,(BtnLast)
+	jnz	Grenade_Cancel	; Cancel the countdown
+gul_xnocancel:
+
 #ifdef PROTOCOL_EXPLODE_PULSE
 	ld	a,#1
 #else
@@ -2480,13 +2478,13 @@ gul_boom:
 	ld	a,(g_state)
 #endif
 #ifdef SPECIAL_RC1
-	ld	a,#state_cancelled
+	ld	a,#outstate_explode0
 #endif
 #ifdef SPECIAL_RC2
-	ld	a,#state_cancelled
+	ld	a,#outstate_explode0
 #endif
 #ifdef SPECIAL_RC3
-	ld	a,#state_cancelled
+	ld	a,#outstate_explode0
 #endif
 #ifdef SPECIAL_RC4
 	ld	a,#state_explode

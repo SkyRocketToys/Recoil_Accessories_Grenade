@@ -99,7 +99,8 @@ Tim2_Speed	equ 256-100  ; 100uS timer2 interrupt (so 1ms=20/2 interrupts)
 #ifdef PROTOCOL_NEC12
 Tim_SendPkt_F   equ 40*20/2  ; (12 bits in 50uS units) 40ms base timing for sending fast packets (since NEC8 packets could take 34ms)
 #else
-Tim_SendPkt_F   equ 30*20/2  ; (12 bits in 50uS units) 30ms base timing for sending fast packets
+;Tim_SendPkt_F   equ 20*20/2  ; (12 bits in 50uS units) 30ms base timing for sending fast packets
+Tim_SendPkt_F   equ 50*20/2  ; (12 bits in 50uS units) 50ms base timing for sending fast packets
 #endif
 Tim_SendPkt_S   equ 100*20/2 ; (12 bits in 50uS units) 100ms base timing for sending slow packets
 TIME_SLEEP      equ 60000    ; (16 bits in 30ms units) Timeout for sleep mode, in units of packets sent
