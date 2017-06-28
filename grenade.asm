@@ -65,6 +65,7 @@
 
 ; -----------------------------------------------------------------------------
 ; Special versions for testing explosions - these all require PROTOCOL_MAN20A, PROTOCOL_OUTSTATE
+;#define SPECIAL_TEST2 ; 5s of 0000, 5s of FFFF, 5s of 5555, 5s of AAAA
 ;#define SPECIAL_TEST ; 20s of state 1, 20s of state 14
 #define SPECIAL_RC1 ; 30s detonation of state 1
 ;#define SPECIAL_RC2 ; 10s detonation of state 1
@@ -449,7 +450,7 @@ Ir_45ms_Chk_Prc:
 	sbc	a,#tim_gapms.n1
 	jc	IR_StartBit
 #endif
-	; Just finished the header gap
+	; Just finished the header gap (and maybe start bit)
 	ld	a,#0
 	ld	(IR_BaseTim0),a
 	ld	(IR_BaseTim1),a
@@ -518,9 +519,9 @@ Bit_0_RX_Prc:
 Bit_0_1_RX_Prc:
 	; Are we transmitting the first or second half of a zero bit?
 	ld	a,(IR_BaseTim0)
-	cmp	a,#IR_01_Dat.n0
+	cmp	a,#IR_0a_Dat.n0
 	ld	a,(IR_BaseTim1)
-	sbc	a,#IR_01_Dat.n1
+	sbc	a,#IR_0a_Dat.n1
 	jnc	Bit_0_0_RX_Prc 
 
 	; First half of a zero bit
@@ -534,9 +535,9 @@ Bit_0_1_RX_Prc:
 Bit_0_0_RX_Prc:
 	; Have we finished transmitting the zero bit?
 	ld	a,(IR_BaseTim0)
-	cmp	a,#ir_00_dat.n0
+	cmp	a,#IR_0ab_Dat.n0
 	ld	a,(IR_BaseTim1)
-	sbc	a,#ir_00_dat.n1
+	sbc	a,#IR_0ab_Dat.n1
 	jnc	RX_0_OK_Prc
 
 	; Second half of a zero bit
@@ -564,9 +565,9 @@ Bit_1_RX_Prc:
 Bit_1_1_RX_Prc:
 	; Are we transmitting the first or second half of a one bit?
 	ld	a,(IR_BaseTim0)
-	cmp	a,#IR_11_Dat.n0
+	cmp	a,#IR_1a_Dat.n0
 	ld	a,(IR_BaseTim1)
-	sbc	a,#IR_11_Dat.n1
+	sbc	a,#IR_1a_Dat.n1
 	jnc	Bit_1_0_RX_Prc 
 
 	; First half of a one bit
@@ -576,9 +577,9 @@ Bit_1_1_RX_Prc:
 Bit_1_0_RX_Prc:
 	; Have we finished transmitting the one bit?
 	ld	a,(IR_BaseTim0)
-	cmp	a,#ir_10_dat.n0
+	cmp	a,#IR_1ab_Dat.n0
 	ld	a,(IR_BaseTim1)
-	sbc	a,#ir_10_dat.n1
+	sbc	a,#IR_1ab_Dat.n1
 	jnc	RX_1_OK_Prc
 
 	; Second half of a one bit
@@ -1716,6 +1717,9 @@ Grenade_Arm:
 #ifdef SPECIAL_TEST
 	ld	a,#state_1
 #endif
+#ifdef SPECIAL_TEST2
+	ld	a,#state_1
+#endif
 	jmp	Grenade_SetState
 
 ; ----------------------------------------------------------------------------
@@ -1745,6 +1749,9 @@ Grenade_Primed:
 Grenade_Cancel:
 	ld	a,#outstate_cancelled
 #ifdef SPECIAL_TEST
+	ld	a,#outstate_none
+#endif
+#ifdef SPECIAL_TEST2
 	ld	a,#outstate_none
 #endif
 	ld	(outstate),A
@@ -1796,6 +1803,11 @@ gvis_primed:
 
 gvis_explode:	
 #ifdef SPECIAL_TEST
+	ld	a,(outstate)
+	and	a,#4
+	jnz	gvis_faster
+#endif
+#ifdef SPECIAL_TEST2
 	ld	a,(outstate)
 	and	a,#4
 	jnz	gvis_faster
@@ -2505,6 +2517,30 @@ gul_ssxx:
 	ld	a,#state_cancelled
 gul_ssxy:
 #endif
+#ifdef SPECIAL_TEST2
+	ld	a,(outstate)
+	and	a,#3
+	jz	gul_ssx0
+	cmp	a,#1
+	jz	gul_ssx1
+	cmp	a,#2
+	jz	gul_ssx2
+gul_ssx3:
+	ld	a,#10
+	jmp	gul_ssxy
+gul_ssx0:
+	ld	a,#0
+	jmp	gul_ssxy
+gul_ssx1:
+	ld	a,#15
+	jmp	gul_ssxy
+gul_ssx2:
+	ld	a,#5
+gul_ssxy:
+	ld	(Payload1),a
+	ld	(Payload2),a
+	ld	(Payload3),a
+#endif
 	ld	(Payload0),a
 	inc	(g_update)
 	; Reset to the beginning of the group
@@ -2528,6 +2564,9 @@ gul_notbang:
 gul_done:
 #ifdef PROTOCOL_OUTSTATE
 	ld	a,(OutState)
+#ifdef SPECIAL_TEST2
+	cmp	a,#outstate_explode15
+#endif
 #ifdef SPECIAL_TEST
 	cmp	a,#outstate_explode35
 #endif
@@ -2562,6 +2601,14 @@ gul_done:
 	
 gul_alldone:
 #ifdef SPECIAL_TEST
+	ld	a,#outstate_explode0
+	ld	(outstate),a
+	ld	a,#0
+	ld	(g_substate0),a
+	ld	(g_substate1),a
+	rets
+#endif
+#ifdef SPECIAL_TEST2
 	ld	a,#outstate_explode0
 	ld	(outstate),a
 	ld	a,#0

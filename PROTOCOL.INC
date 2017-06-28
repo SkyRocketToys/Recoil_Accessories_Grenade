@@ -148,24 +148,28 @@ IR_BitNum_Dat   equ 4    ; ^
 
 ; Payload bit coding parameters
 #ifdef PROTOCOL_NEC4
-IR_01_Dat       equ 6    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
-IR_00_Dat       equ 12	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
-IR_11_Dat       equ 6    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
-IR_10_Dat       equ 18   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+IR_0a_Dat       equ 6    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_0ab_Dat      equ 12	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+IR_1a_Dat       equ 6    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_1ab_Dat      equ 18   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
 #else
 #ifdef PROTOCOL_NEC12
-IR_01_Dat       equ 6    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
-IR_00_Dat       equ 12	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
-IR_11_Dat       equ 6    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
-IR_10_Dat       equ 18   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+IR_0a_Dat       equ 6    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_0ab_Dat      equ 12	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+IR_1a_Dat       equ 6    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_1ab_Dat      equ 18   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
 #else
-IR_01_Dat       equ 4    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
-IR_00_Dat       equ 8	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
-IR_11_Dat       equ 4    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
 #ifdef PROTOCOL_MAN
-IR_10_Dat       equ 8   ; For one payload bits in Manchester coding, the time spent high+low (in 100uS ticks)
+; The +1 is so that BaseTimer of 1,2,3,4 is the first half and 5,6,7,8 is the second half
+IR_0a_Dat       equ 4+1  ; For zero payload bits in Manchester coding, the time spent high (in 100uS ticks)
+IR_0ab_Dat      equ 8	 ; For zero payload bits in Manchester coding, the time spent high+low (in 100uS ticks)
+IR_1a_Dat       equ 4+1  ; For one payload bits in Manchester coding, the time spent low (in 100uS ticks)
+IR_1ab_Dat      equ 8    ; For one payload bits in Manchester coding, the time spent low+high (in 100uS ticks)
 #else
-IR_10_Dat       equ 16   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+IR_0a_Dat       equ 4    ; For zero payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_0ab_Dat      equ 8	 ; For zero payload bits in NEC coding, the time spent high+low (in 100uS ticks)
+IR_1a_Dat       equ 4    ; For one payload bits in NEC coding, the time spent high (in 100uS ticks)
+IR_1ab_Dat      equ 16   ; For one payload bits in NEC coding, the time spent high+low (in 100uS ticks)
 #endif
 #endif
 #endif
@@ -193,7 +197,7 @@ tim_45ms        equ 16  ; Timer for 1.6ms header gap in 100uS units
 tim_explode_pulse	equ	48	; The timer for 4.8ms header pulse for explosions
 
 #ifdef PROTOCOL_MAN
-tim_gapms	equ tim_45ms+IR_01_Dat ; Gap (including start bit)
+tim_gapms	equ tim_45ms+IR_0a_Dat ; Gap (including start bit)
 #else
 tim_gapms	equ tim_45ms-1 ; Gap (no start bit)
 #endif
