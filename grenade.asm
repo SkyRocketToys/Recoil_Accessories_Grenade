@@ -1157,8 +1157,8 @@ Chk_Halt_Tim_Prc:
 	clr	#1,(SYS0) ; Clear ENINT and disable interrupts
 	nop
 	
-	; Turn ON the visible LED and infrared LED, to draw down the capacitor
-	set	#2,(RTC)        ; PA1 no output infrared beam
+	; Turn OFF the visible LED, but ON the infrared LED, to draw down the capacitor
+	set	#2,(RTC) 	; PA1 output infrared beam
 #ifdef BOARD_STEPHEN
 	ld	a,#1000b
 	ld	(data_pa),a	; Port A data (0=low/1=high)
@@ -1177,19 +1177,36 @@ Chk_Halt_Tim_Prc:
 #endif
 #ifdef BOARD_8LEDS
 	; Important pins: PB0 = 0 (power off)
-	; PA2 = 0 (LED on to draw some current)
+	; PA2 = 1 (LED off)
 	; PD1 = 1 (IR LED on to draw some current)
-	ld	a,#1010b
+	ld	a,#1110b
 	ld	(data_pa),a	; Port A data (0=low/1=high)
 	ld	a,#0000b
 	ld	(data_pb),a	; Port B data (0=low/1=high)
 	ld	a,#0010b
 	ld	(data_pd),a	; Port D data (0=low/1=high)
 #endif
+	ld	a,#0
+	ld	(g_outi),A
+	ld	(CntDelay0),A
+	ld	(CntDelay1),A
+	ld	(CntDelay2),A
+	ld	(CntDelay3),A
+	ld	(CntDelay4),A
 	nop
 PowerOffLoop:
 	; We could be stuck here a while if the button is being held!
 	nop
+	nop
+; Delay for 5*65536 instructions (40ms)
+PowerOffDelayLoop:
+	inc	(CntDelay0)
+	adr	(CntDelay1)
+	adr	(CntDelay2)
+	adr	(CntDelay3)
+	jnz	PowerOffDelayLoop
+	nop
+	call	Grenade_update_outi_force
 	nop
 	jmp	PowerOffLoop
 	nop
@@ -1892,6 +1909,7 @@ Grenade_update_outi:
 	or	a,(g_send)
 	jz	gou_off
 
+Grenade_update_outi_force:
 	inc	(g_outi)
 	ld	a,(g_outi)
 	and	a,#ADDRESS_MASK
@@ -2627,7 +2645,7 @@ gul_done:
 	cmp	a,#outstate_explode35
 #endif
 #ifdef SPECIAL_RC1
-	cmp	a,#outstate_explode25
+	cmp	a,#outstate_explode20 ; BODGE 30s value was timed at 37s
 #endif
 #ifdef SPECIAL_RC2
 	cmp	a,#outstate_explode5
