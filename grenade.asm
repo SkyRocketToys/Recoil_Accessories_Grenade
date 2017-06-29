@@ -138,21 +138,25 @@ outstate_explode45	equ	10
 outstate_explode50	equ	11
 outstate_explode55	equ	12
 outstate_cancelled	equ	13
+outstate_priming	equ	14
 outstate_primed		equ	15
 
+; In these units with 16 bits we can reach 5 seconds (5000ms)
+TIME_TICK	equ  100*25/2 ; (16 bits) Size of normal grenade ticks in ms->interrupt units
+TIME_EXPLODE	equ  100*25/2 ; (16 bits) Size of explosion ticks in ms->interrupt units (assumed to be <=65535)
+TIME_CANCELLED	equ  100*25/2 ; (16 bits) Size of cancelled ticks in ms->interrupt units (assumed to be <=65535)
+TIME_PRIMING	equ   50*25/2 ; (16 bits) Size of priming ticks
+TIME_PRIMED	equ   50*25/2 ; (16 bits) Size of primed ticks (must match TIME_PRIMING)
+TIME_WAITING	equ  750*25/2 ; (16 bits) Time to wait to see if priming or armed (0.75s) first time
+TIME_REWAITING	equ 1500*25/2 ; (16 bits) Time to wait to see if priming or armed (2.00s) second time
 
-TIME_TICK	equ 100*25/2 ; Size of normal grenade ticks in ms->interrupt units
-TIME_EXPLODE	equ 100*25/2 ; Size of explosion ticks in ms->interrupt units (assumed to be <=65535)
-TIME_CANCELLED	equ 100*25/2 ; Size of cancelled ticks in ms->interrupt units (assumed to be <=65535)
-TIME_PRIMING	equ  50*25/2 ; Size of priming ticks
-TIME_PRIMED	equ 500*25/2 ; Size of primed ticks (between sending out packets)
-TIME_WAITING	equ 750*25/2 ; Time to wait to see if priming or armed (0.75s)
-COUNT_PRIMING	equ 10 ; Number of priming ticks between packets (assumed to be even) (assumed to be <255)
-;;COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
-COUNT_EXPLODE	equ 50 ; Number of explosion ticks before changing explosion counter (assumed to be <=255)
-COUNT_TICK	equ 10 ; Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
-COUNT_CANCELLED	equ 20 ; Number of cancelled ticks before going to sleep (assumed to be <=255)
-COUNT_PRIMED	equ  5 ; How long are we solid in the primed mode? (2 seconds)
+COUNT_PRIMING	equ 10 ; (8 bits) Number of priming ticks between packets (assumed to be even) (assumed to be <255)
+;;COUNT_EXPLODE	equ 20 ; (8 bits) Number of explosion ticks before going to sleep (assumed to be <=255)
+COUNT_EXPLODE	equ 50 ; (8 bits) Number of explosion ticks before changing explosion counter (assumed to be <=255)
+COUNT_TICK	equ 10 ; (4 bits) Number of update ticks before going to next state (assumed to be even) (assumed to be <15)
+COUNT_CANCELLED	equ 20 ; (8 bits) Number of cancelled ticks before going to sleep (assumed to be <=255)
+COUNT_PRIMEDTX	equ 10 ; (4 bits) Number of primed ticks between sending 8 packets
+COUNT_PRIMED	equ 40 ; (8 bits) Number of primed ticks to stay visible in the primed mode? (2 seconds)
 
 #ifdef SPECIAL_SIMON
 ADDRESS_MASK	equ	0
@@ -287,6 +291,9 @@ g_btntimer0	; For counting when the button is held during primed mode
 g_btntimer1
 g_btntimer2
 g_btntimer3
+
+; Special value for primed counter
+g_primedcnt	; Counts up on each substate - 10 make it to trigger flashes
 
 ; Initial delay timer
 CntDelay0
@@ -1741,13 +1748,17 @@ Grenade_Wait:
 
 ; ----------------------------------------------------------------------------
 Grenade_Prime:
-	ld	a,#outstate_none
+	ld	a,#outstate_priming
 	ld	(outstate),A
 	ld	a,#state_priming
 	jmp	Grenade_SetState
 
 ; ----------------------------------------------------------------------------
+INIT_PRIMEDTX	equ	COUNT_PRIMEDTX-2 ; Trigger a packet send the second time the update is hit (give 50ms grace to priming packet)
+
 Grenade_Primed:
+	ld	a,#INIT_PRIMEDTX
+	ld	(g_primedcnt),a
 	ld	a,#0
 	ld	(g_btntimer0),A
 	ld	(g_btntimer1),A
@@ -1802,6 +1813,12 @@ Grenade_update_visible:
 	jz	gvis_fast
 	jmp	gvis_slow
 	
+gvis_primed:
+	; Primed
+	ld	a,(g_quiet)
+	jnz	gvis_off
+	; Falls through
+
 gvis_priming:
 	; Priming
 	ld	a,(g_substate0)
@@ -1809,11 +1826,6 @@ gvis_priming:
 	jnz	gvis_on
 	jmp	gvis_off
 	
-gvis_primed:
-	; Primed
-	ld	a,(g_quiet)
-	jz	gvis_on
-	jmp	gvis_off
 
 gvis_explode:	
 #ifdef SPECIAL_TEST
@@ -2396,13 +2408,13 @@ gul_primed:
 	ld	a,(BtnNow)
 	jz	gul_noreprime
 	ld	a,(g_btntimer0)
-	cmp	a,#TIME_WAITING.n0
+	cmp	a,#TIME_REWAITING.n0
 	ld	a,(g_btntimer1)
-	sbc	a,#TIME_WAITING.n1
+	sbc	a,#TIME_REWAITING.n1
 	ld	a,(g_btntimer2)
-	sbc	a,#TIME_WAITING.n2
+	sbc	a,#TIME_REWAITING.n2
 	ld	a,(g_btntimer3)
-	sbc	a,#TIME_WAITING.n3
+	sbc	a,#TIME_REWAITING.n3
 	jnc	Grenade_Prime
 	jmp	gul_pcont
 gul_noreprime:
@@ -2420,7 +2432,7 @@ gul_pcont:
 	jnz	Grenade_Arm ; Arm the grenade
 gul_noarmp:
 
-	; Timeslice for primed state (0.5 seconds)
+	; Timeslice for primed state (0.05 seconds)
 	ld	a,(g_timer0)
 	cmp	a,#TIME_PRIMED.n0
 	ld	a,(g_timer1)
@@ -2457,6 +2469,13 @@ gul_primed_pkt:
 	ld	a,(g_substate1)
 	sbc	a,#COUNT_PRIMED.n1
 	jnc	gul_primed_quiet
+
+	inc	(g_primedcnt)	; For sending packets
+	ld	A,(g_primedcnt)
+	cmp	A,#COUNT_PRIMEDTX
+	jnz	gulp_notx
+	ld	A,#0
+	ld	(g_primedcnt),A
 	
 	; Send the primed event
 	ld	a,(Weapon1)
@@ -2472,7 +2491,7 @@ gul_primed_pkt:
 #endif
 	ld	(Payload0),a
 	inc	(g_update) ; Allow new packet to be sent
-
+gulp_notx:
 	rets
 
 ; -------------------------------------	
