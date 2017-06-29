@@ -146,7 +146,7 @@ TIME_EXPLODE	equ 100*25/2 ; Size of explosion ticks in ms->interrupt units (assu
 TIME_CANCELLED	equ 100*25/2 ; Size of cancelled ticks in ms->interrupt units (assumed to be <=65535)
 TIME_PRIMING	equ  50*25/2 ; Size of priming ticks
 TIME_PRIMED	equ 500*25/2 ; Size of primed ticks (between sending out packets)
-TIME_WAITING	equ 750*25/2 ; Time to wait to see if priming or armed
+TIME_WAITING	equ 750*25/2 ; Time to wait to see if priming or armed (0.75s)
 COUNT_PRIMING	equ 10 ; Number of priming ticks between packets (assumed to be even) (assumed to be <255)
 ;;COUNT_EXPLODE	equ 20 ; Number of explosion ticks before going to sleep (assumed to be <=255)
 COUNT_EXPLODE	equ 50 ; Number of explosion ticks before changing explosion counter (assumed to be <=255)
@@ -283,6 +283,10 @@ ExplodePhase	; 0=off phase, 1=on phase during explosion
 OutState	; outstate_xxx for output
 
 ; (would be a bank boundary if this was handled manually)
+g_btntimer0	; For counting when the button is held during primed mode
+g_btntimer1
+g_btntimer2
+g_btntimer3
 
 ; Initial delay timer
 CntDelay0
@@ -377,6 +381,12 @@ Tim2_Int_Prc:
 	adr	(g_timer1)
 	adr	(g_timer2)
 	adr	(g_timer3)
+
+	; Update timer for primed logic
+	inc	(g_btntimer0)
+	adr	(g_btntimer1)
+	adr	(g_btntimer2)
+	adr	(g_btntimer3)
 
 	; Support special grenade explosion
 	ld	a,(SendExplode)
@@ -1739,6 +1749,10 @@ Grenade_Prime:
 ; ----------------------------------------------------------------------------
 Grenade_Primed:
 	ld	a,#0
+	ld	(g_btntimer0),A
+	ld	(g_btntimer1),A
+	ld	(g_btntimer2),A
+	ld	(g_btntimer3),A
 	ld	(g_quiet),A
 	ld	a,#outstate_primed
 	ld	(outstate),A
@@ -2106,7 +2120,7 @@ grb_off:
 ; 0	Unarmed	X	X	X
 ; 1	Cancel	X	Off	Off
 ; 2	Priming	Primed	X	Faster
-; 3 	Primed	10	X	Solid and then off
+; 3 	Primed	10	(Priming)	Solid and then off
 ; 4	10	Cancel	9	Slow
 ; 5	9	Cancel	8	Slow
 ; 6	8	Cancel	7	Slow
@@ -2377,6 +2391,28 @@ gul_priming_exit:
 gul_primed:
 	ld	a,#0
 	ld	(SendExplode),A
+
+	; Hold it long enough and we will prime	
+	ld	a,(BtnNow)
+	jz	gul_noreprime
+	ld	a,(g_btntimer0)
+	cmp	a,#TIME_WAITING.n0
+	ld	a,(g_btntimer1)
+	sbc	a,#TIME_WAITING.n1
+	ld	a,(g_btntimer2)
+	sbc	a,#TIME_WAITING.n2
+	ld	a,(g_btntimer3)
+	sbc	a,#TIME_WAITING.n3
+	jnc	Grenade_Prime
+	jmp	gul_pcont
+gul_noreprime:
+	ld	A,#0
+	ld	(g_btntimer0),A
+	ld	(g_btntimer1),A
+	ld	(g_btntimer2),A
+	ld	(g_btntimer3),A
+gul_pcont:
+
 	; Arming? - on release
 	ld	a,(BtnNow)
 	jnz	gul_noarmp
@@ -2384,6 +2420,7 @@ gul_primed:
 	jnz	Grenade_Arm ; Arm the grenade
 gul_noarmp:
 
+	; Timeslice for primed state (0.5 seconds)
 	ld	a,(g_timer0)
 	cmp	a,#TIME_PRIMED.n0
 	ld	a,(g_timer1)
